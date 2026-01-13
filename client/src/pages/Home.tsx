@@ -947,16 +947,8 @@ export default function Home() {
 
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center text-xs">
-                                  <span className="text-muted-foreground">实际值: {actual}</span>
-                                  <span className="text-muted-foreground">目标值: {target !== null && target !== undefined ? target : '不考核'}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs mb-2">
-                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
-                                  <span className="text-muted-foreground">
-                                    {target !== null && target !== 0
-                                      ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
-                                      : '无目标'}
-                                  </span>
+                                  <span className="text-muted-foreground">{actual} / {target !== null && target !== undefined ? target : '—'}</span>
+                                  <span className="text-muted-foreground">{weightPercentage.toFixed(2)}%</span>
                                 </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
@@ -970,10 +962,12 @@ export default function Home() {
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="text-xs font-medium text-foreground">
-                                    得分: {score.toFixed(2)}
+                                    {score.toFixed(2)} / {weightPercentage.toFixed(2)}
                                   </span>
                                   <span className="text-xs text-muted-foreground">
-                                    / {weightPercentage.toFixed(2)}
+                                    {target !== null && target !== 0
+                                      ? `${((actual / target) * 100).toFixed(1)}%`
+                                      : '—'}
                                   </span>
                                 </div>
                               </div>
@@ -1067,16 +1061,8 @@ export default function Home() {
 
                               <div className="space-y-2">
                                 <div className="flex justify-between items-center text-xs">
-                                  <span className="text-muted-foreground">实际值: {actual}</span>
-                                  <span className="text-muted-foreground">目标值: {target !== null && target !== undefined ? target : '不考核'}</span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs mb-2">
-                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
-                                  <span className="text-muted-foreground">
-                                    {target !== null && target !== 0
-                                      ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
-                                      : '无目标'}
-                                  </span>
+                                  <span className="text-muted-foreground">{actual} / {target !== null && target !== undefined ? target : '—'}</span>
+                                  <span className="text-muted-foreground">{weightPercentage.toFixed(2)}%</span>
                                 </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
@@ -1090,10 +1076,12 @@ export default function Home() {
                                 </div>
                                 <div className="flex justify-between items-center">
                                   <span className="text-xs font-medium text-foreground">
-                                    得分: {score.toFixed(2)}
+                                    {score.toFixed(2)} / {weightPercentage.toFixed(2)}
                                   </span>
                                   <span className="text-xs text-muted-foreground">
-                                    / {weightPercentage.toFixed(2)}
+                                    {target !== null && target !== 0
+                                      ? `${((actual / target) * 100).toFixed(1)}%`
+                                      : '—'}
                                   </span>
                                 </div>
                               </div>
