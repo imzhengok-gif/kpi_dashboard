@@ -5,6 +5,23 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Plus, Trash2, Edit2, Settings, Copy, Check } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  ScatterChart,
+  Scatter,
+} from 'recharts';
 
 interface KPIIndicator {
   name: string;
@@ -132,6 +149,27 @@ export default function Home() {
     const employee = employees.find((e) => e.id === employeeId);
     if (!employee) return 0;
     return Object.values(employee.weights).reduce((sum, w) => sum + w, 0);
+  };
+
+  // 获取业务线得分
+  const getCategoryScores = (employeeId: string) => {
+    if (!kpiStructure) return {};
+    const employee = employees.find((e) => e.id === employeeId);
+    if (!employee) return {};
+
+    const categoryScores: { [key: string]: number } = {};
+    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+      let categoryScore = 0;
+      categoryData.指标.forEach((indicator) => {
+        const key = `${category}_${indicator.name}`;
+        const actual = parseFloat(String(employee[key] || 0));
+        const target = employee.targets[key] ?? indicator.target;
+        const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
+        categoryScore += calculateKPI(actual, target, weightPercentage);
+      });
+      categoryScores[category] = Math.round(categoryScore * 100) / 100;
+    });
+    return categoryScores;
   };
 
   // 处理员工数据输入
@@ -293,6 +331,53 @@ export default function Home() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // 准备图表数据
+  const prepareBarChartData = () => {
+    return employees.map((emp) => ({
+      name: emp.name,
+      得分: Math.round(getEmployeeTotalScore(emp.id) * 100) / 100,
+      满分: Math.round(getEmployeeTotalMaxScore(emp.id) * 100) / 100,
+    }));
+  };
+
+  const prepareCategoryChartData = () => {
+    if (!kpiStructure) return [];
+    const categories = Object.keys(kpiStructure);
+    return employees.map((emp) => {
+      const data: any = { name: emp.name };
+      categories.forEach((category) => {
+        data[category] = Math.round(getCategoryScores(emp.id)[category] * 100) / 100;
+      });
+      return data;
+    });
+  };
+
+  const prepareHeatmapData = () => {
+    if (!kpiStructure) return [];
+    const data: any[] = [];
+    employees.forEach((emp) => {
+      const kpi = getEmployeeKPI(emp.id);
+      let indicatorIndex = 0;
+      Object.entries(kpiStructure).forEach(([, categoryData]) => {
+        categoryData.指标.forEach((indicator) => {
+          const key = `${indicator.name}`;
+          const score = kpi[`${Object.keys(kpiStructure)[0]}_${indicator.name}`]?.score || 0;
+          data.push({
+            employee: emp.name,
+            indicator: key,
+            score: Math.round(score * 100) / 100,
+            x: indicatorIndex,
+            y: parseInt(emp.id) - 1,
+          });
+          indicatorIndex++;
+        });
+      });
+    });
+    return data;
+  };
+
+  const COLORS = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#d946ef'];
 
   if (!kpiStructure) {
     return (
@@ -606,6 +691,100 @@ export default function Home() {
           <TabsContent value="results" className="space-y-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">KPI 成绩统计</h2>
 
+            {/* 员工成绩对比柱状图 */}
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-foreground mb-4">员工成绩对比</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={prepareBarChartData()}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="得分" fill="#3b82f6" />
+                  <Bar dataKey="满分" fill="#d1d5db" />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+
+            {/* 业务线得分分布 */}
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-foreground mb-4">业务线得分分布</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={prepareCategoryChartData()}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  {Object.keys(kpiStructure).map((category, index) => (
+                    <Line
+                      key={category}
+                      type="monotone"
+                      dataKey={category}
+                      stroke={COLORS[index % COLORS.length]}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </Card>
+
+            {/* 得分热力图 */}
+            <Card className="p-6">
+              <h3 className="text-lg font-bold text-foreground mb-4">得分热力分布</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left p-2 font-semibold text-foreground">员工</th>
+                      {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                        categoryData.指标.map((indicator) => (
+                          <th key={`${category}_${indicator.name}`} className="text-center p-2 font-semibold text-foreground text-xs">
+                            {indicator.name}
+                          </th>
+                        ))
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employees.map((emp) => {
+                      const kpi = getEmployeeKPI(emp.id);
+                      return (
+                        <tr key={emp.id} className="border-b border-border hover:bg-secondary">
+                          <td className="p-2 font-medium text-foreground">{emp.name}</td>
+                          {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                            categoryData.指标.map((indicator) => {
+                              const key = `${category}_${indicator.name}`;
+                              const score = kpi[key]?.score || 0;
+                              const weight = emp.weights[key] ?? indicator.weight * 100;
+                              const percentage = weight > 0 ? (score / weight) * 100 : 0;
+                              const bgColor =
+                                percentage >= 100
+                                  ? 'bg-green-100 text-green-900'
+                                  : percentage >= 80
+                                  ? 'bg-blue-100 text-blue-900'
+                                  : percentage >= 60
+                                  ? 'bg-yellow-100 text-yellow-900'
+                                  : 'bg-red-100 text-red-900';
+
+                              return (
+                                <td key={key} className={`text-center p-2 ${bgColor} rounded`}>
+                                  <div className="font-semibold">{score.toFixed(2)}</div>
+                                  <div className="text-xs opacity-75">{percentage.toFixed(0)}%</div>
+                                </td>
+                              );
+                            })
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* 员工卡片 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee.id);
@@ -636,6 +815,7 @@ export default function Home() {
               })}
             </div>
 
+            {/* 排名 */}
             <Card className="p-6">
               <h3 className="text-xl font-bold text-foreground mb-4">排名</h3>
               <div className="space-y-3">
