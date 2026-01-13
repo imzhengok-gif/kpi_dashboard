@@ -185,13 +185,14 @@ export default function Home() {
 
   // 获取所有指标
   const getAllIndicators = () => {
-    const indicators: Array<{ key: string; name: string }> = [];
+    const indicators: Array<{ key: string; name: string; unit: string }> = [];
     if (kpiStructure) {
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
           indicators.push({
             key: `${category}_${indicator.name}`,
             name: indicator.name,
+            unit: indicator.unit || '',
           });
         });
       });
@@ -203,6 +204,7 @@ export default function Home() {
             indicators.push({
               key,
               name: indicator.name,
+              unit: indicator.unit || '',
             });
           }
         });
@@ -932,6 +934,10 @@ export default function Home() {
                               ) : null}
 
                               <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs mb-1">
+                                  <span className="text-muted-foreground">目标: {target !== null && target !== undefined ? target : '—'}</span>
+                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
+                                </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
                                     className="h-full bg-accent transition-all duration-300"
@@ -1042,6 +1048,10 @@ export default function Home() {
                               )}
 
                               <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs mb-1">
+                                  <span className="text-muted-foreground">目标: {target !== null && target !== undefined ? target : '—'}</span>
+                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
+                                </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
                                     className="h-full bg-accent transition-all duration-300"
@@ -1172,7 +1182,7 @@ export default function Home() {
                   <option value="">—— 请选择指标 ——</option>
                   {getAllIndicators().map((indicator) => (
                     <option key={indicator.key} value={indicator.key}>
-                      {indicator.name}
+                      {indicator.name} {indicator.unit ? `(${indicator.unit})` : ''}
                     </option>
                   ))}
                 </select>
