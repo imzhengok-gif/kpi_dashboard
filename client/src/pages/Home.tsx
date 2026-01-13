@@ -1107,79 +1107,7 @@ export default function Home() {
               </div>
             </Card>
 
-            {/* 员工业务线分布饼状图 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {employees.map((emp) => (
-                <Card key={emp.id} className="p-6">
-                  <h3 className="text-lg font-bold text-foreground mb-4">{emp.name} - 业务线分布</h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie
-                        data={preparePieData(emp.id)}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, value }) => `${name}: ${value}`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {preparePieData(emp.id).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                </Card>
-              ))}
-            </div>
 
-            {/* 业务线完成度排名 */}
-            <Card className="p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-foreground mb-4">业务线完成度排名</h3>
-                <div className="flex gap-2 flex-wrap">
-                  {Object.keys(kpiStructure).map((category) => (
-                    <Button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      variant={selectedCategory === category ? 'default' : 'outline'}
-                      size="sm"
-                    >
-                      {category}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={prepareCategoryRankingData()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="score" fill="#3b82f6" name="得分" />
-                  <Bar dataKey="maxScore" fill="#d1d5db" name="满分" />
-                </BarChart>
-              </ResponsiveContainer>
-
-              <div className="mt-6 space-y-2">
-                <h4 className="font-semibold text-foreground">排名详情</h4>
-                {prepareCategoryRankingData().map((item, index) => (
-                  <div key={item.name} className="flex items-center justify-between p-3 bg-secondary rounded">
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-primary w-8">#{index + 1}</span>
-                      <span className="font-medium text-foreground">{item.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-accent">{item.score.toFixed(2)} / {item.maxScore.toFixed(2)}</div>
-                      <div className="text-xs text-muted-foreground">{item.completion.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
           </TabsContent>
         </Tabs>
       </div>
