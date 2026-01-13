@@ -58,13 +58,14 @@ export default function Home() {
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
 
-        // 初始化权重
+        // 初始化权重（转换为百分比）
         const initialWeights: { [key: string]: { [key: string]: number } } = {};
         Object.entries(data).forEach(([category, categoryData]) => {
           initialWeights[category] = {};
           categoryData.指标.forEach((indicator) => {
             const key = indicator.name;
-            initialWeights[category][key] = indicator.weight;
+            // 将权重转换为百分比（0.055 -> 5.5）
+            initialWeights[category][key] = indicator.weight * 100;
           });
         });
         setWeights(initialWeights);
@@ -77,11 +78,13 @@ export default function Home() {
   }, []);
 
   // 计算 KPI 得分
-  const calculateKPI = (actual: number, target: number, weight: number) => {
+  // 权重已经是百分比形式（如 5.5），满分就是权重值
+  const calculateKPI = (actual: number, target: number, weightPercentage: number) => {
     if (target === 0) return 0;
     const completion = actual / target;
-    const score = Math.min(completion * weight, weight); // 最高分不超过权重
-    return Math.round(score * 10000) / 10000;
+    // 得分 = 完成率 × 权重百分比，但不超过权重百分比
+    const score = Math.min(completion * weightPercentage, weightPercentage);
+    return Math.round(score * 100) / 100;
   };
 
   // 获取员工的 KPI 数据
@@ -93,10 +96,10 @@ export default function Home() {
       categoryData.指标.forEach((indicator) => {
         const key = `${category}_${indicator.name}`;
         const actual = parseFloat(String(employees.find(e => e.id === employeeId)?.[key] || 0));
-        const weight = weights[category]?.[indicator.name] || indicator.weight;
+        const weightPercentage = weights[category]?.[indicator.name] || indicator.weight * 100;
         kpi[key] = {
           actual,
-          score: calculateKPI(actual, indicator.target, weight),
+          score: calculateKPI(actual, indicator.target, weightPercentage),
         };
       });
     });
@@ -108,6 +111,13 @@ export default function Home() {
   const getEmployeeTotalScore = (employeeId: string) => {
     const kpi = getEmployeeKPI(employeeId);
     return Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
+  };
+
+  // 获取总满分
+  const getTotalMaxScore = () => {
+    return Object.values(weights)
+      .flatMap((cat) => Object.values(cat))
+      .reduce((sum, w) => sum + w, 0);
   };
 
   // 处理员工数据输入
@@ -139,7 +149,7 @@ export default function Home() {
     }
   };
 
-  // 处理权重变更
+  // 处理权重变更（百分比形式）
   const handleWeightChange = (category: string, indicatorName: string, value: string) => {
     const newWeight = parseFloat(value) || 0;
     setWeights({
@@ -204,6 +214,8 @@ export default function Home() {
     );
   }
 
+  const totalMaxScore = getTotalMaxScore();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -252,6 +264,7 @@ export default function Home() {
                       <div className="text-3xl font-bold text-primary">
                         {getEmployeeTotalScore(employee.id).toFixed(2)}
                       </div>
+                      <div className="text-xs text-muted-foreground">/ {totalMaxScore.toFixed(2)}</div>
                     </div>
                     {employees.length > 1 && (
                       <Button
@@ -273,7 +286,7 @@ export default function Home() {
                         const actual = parseFloat(String(employee[key] || 0));
                         const kpi = getEmployeeKPI(employee.id);
                         const score = kpi[key]?.score || 0;
-                        const weight = weights[category]?.[indicator.name] || indicator.weight;
+                        const weightPercentage = weights[category]?.[indicator.name] || indicator.weight * 100;
 
                         return (
                           <div key={key} className="bg-secondary p-4 rounded-lg">
@@ -302,7 +315,7 @@ export default function Home() {
                                 完成度: {((actual / indicator.target) * 100).toFixed(1)}%
                               </span>
                               <span className="text-sm font-bold text-accent">
-                                得分: {score.toFixed(2)} / {weight.toFixed(3)}
+                                得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
                               </span>
                             </div>
                           </div>
@@ -349,7 +362,7 @@ export default function Home() {
                     <h3 className="text-xl font-bold text-foreground mb-4">{category}</h3>
                     <div className="space-y-4">
                       {categoryData.指标.map((indicator) => {
-                        const weight = weights[category]?.[indicator.name] || indicator.weight;
+                        const weight = weights[category]?.[indicator.name] || indicator.weight * 100;
 
                         return (
                           <div key={indicator.name} className="flex items-center justify-between">
@@ -365,19 +378,19 @@ export default function Home() {
                               <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
-                                  step="0.001"
+                                  step="0.1"
                                   value={weight}
                                   onChange={(e) =>
                                     handleWeightChange(category, indicator.name, e.target.value)
                                   }
                                   className="w-24"
                                 />
-                                <span className="text-sm text-muted-foreground">权重</span>
+                                <span className="text-sm text-muted-foreground">%</span>
                               </div>
                             ) : (
                               <div className="text-right">
-                                <div className="text-lg font-bold text-primary">{weight.toFixed(3)}</div>
-                                <p className="text-xs text-muted-foreground">权重</p>
+                                <div className="text-lg font-bold text-primary">{weight.toFixed(2)}%</div>
+                                <p className="text-xs text-muted-foreground">权重占比</p>
                               </div>
                             )}
                           </div>
@@ -387,8 +400,8 @@ export default function Home() {
                     <div className="mt-4 pt-4 border-t border-border">
                       <div className="flex justify-between items-center">
                         <span className="font-medium text-foreground">分类总权重</span>
-                        <span className={`text-lg font-bold ${categoryTotal > 1 ? 'text-destructive' : 'text-primary'}`}>
-                          {categoryTotal.toFixed(3)}
+                        <span className={`text-lg font-bold ${categoryTotal > 100 ? 'text-destructive' : 'text-primary'}`}>
+                          {categoryTotal.toFixed(2)}%
                         </span>
                       </div>
                     </div>
@@ -399,12 +412,9 @@ export default function Home() {
 
             <Card className="p-6 bg-secondary">
               <div className="flex justify-between items-center">
-                <span className="text-lg font-bold text-foreground">全部权重总和</span>
+                <span className="text-lg font-bold text-foreground">全部权重总和（总满分）</span>
                 <span className="text-2xl font-bold text-primary">
-                  {Object.values(weights)
-                    .flatMap((cat) => Object.values(cat))
-                    .reduce((sum, w) => sum + w, 0)
-                    .toFixed(3)}
+                  {totalMaxScore.toFixed(2)} 分
                 </span>
               </div>
             </Card>
@@ -417,26 +427,24 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee.id);
-                const maxScore = Object.values(weights)
-                  .flatMap((cat) => Object.values(cat))
-                  .reduce((sum, w) => sum + w, 0);
+                const completionRate = (totalScore / totalMaxScore) * 100;
 
                 return (
                   <Card key={employee.id} className="p-6 border-l-4 border-l-primary">
                     <h3 className="text-lg font-bold text-foreground mb-2">{employee.name}</h3>
                     <div className="space-y-2">
                       <div>
-                        <p className="text-sm text-muted-foreground">总分</p>
+                        <p className="text-sm text-muted-foreground">得分</p>
                         <p className="text-3xl font-bold text-primary">{totalScore.toFixed(2)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">满分</p>
-                        <p className="text-lg font-semibold text-foreground">{maxScore.toFixed(2)}</p>
+                        <p className="text-lg font-semibold text-foreground">{totalMaxScore.toFixed(2)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">完成度</p>
                         <p className="text-lg font-semibold text-accent">
-                          {((totalScore / maxScore) * 100).toFixed(1)}%
+                          {completionRate.toFixed(1)}%
                         </p>
                       </div>
                     </div>
@@ -460,7 +468,7 @@ export default function Home() {
                         <span className="text-lg font-bold text-primary w-8">{index + 1}</span>
                         <span className="font-medium text-foreground">{emp.name}</span>
                       </div>
-                      <span className="text-lg font-bold text-accent">{emp.score.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-accent">{emp.score.toFixed(2)} 分</span>
                     </div>
                   ))}
               </div>
