@@ -65,6 +65,7 @@ export default function Home() {
   const [addingCustom, setAddingCustom] = useState<{ employeeId: string; name: string; unit: string; weight: number } | null>(null);
   const [managingIndicators, setManagingIndicators] = useState<string | null>(null);
   const [selectedIndicatorForRanking, setSelectedIndicatorForRanking] = useState<string | null>(null);
+  const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<string | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1236,6 +1237,112 @@ export default function Home() {
                   </div>
                 </div>
               )}
+            </Card>
+
+            {/* 员工业务完成度排名 */}
+            <Card className="p-6 mb-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">员工业务完成度排名</h3>
+              <div className="mb-4">
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  选择员工
+                </label>
+                <select
+                  value={selectedEmployeeForDetail || ''}
+                  onChange={(e) => setSelectedEmployeeForDetail(e.target.value || null)}
+                  className="w-full p-2 border border-border rounded bg-background text-foreground"
+                >
+                  <option value="">—— 请选择员工 ——</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedEmployeeForDetail && (() => {
+                const selectedEmp = employees.find(e => e.id === selectedEmployeeForDetail);
+                if (!selectedEmp) return null;
+
+                const indicators = getAllIndicators();
+                const indicatorRankings = indicators.map((indicator) => {
+                  const actual = (selectedEmp.data as Record<string, number>)?.[indicator.key] || 0;
+                  const target = selectedEmp.targets?.[indicator.key];
+                  const weight = selectedEmp.weights?.[indicator.key] || 0;
+                  const completion = target !== null && target !== 0 ? (actual / target) * 100 : 0;
+                  const score = target !== null && target !== 0
+                    ? Math.min((actual / target) * weight, weight)
+                    : Math.min(actual, weight);
+
+                  // 计算该指标在所有员工中的排名
+                  const allRankings = employees
+                    .map((emp) => {
+                      const empActual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                      const empTarget = emp.targets?.[indicator.key];
+                      const empCompletion = empTarget !== null && empTarget !== 0 ? (empActual / empTarget) * 100 : 0;
+                      return { emp, completion: empCompletion };
+                    })
+                    .sort((a, b) => b.completion - a.completion);
+
+                  const rank = allRankings.findIndex(r => r.emp.id === selectedEmp.id) + 1;
+
+                  return {
+                    indicator,
+                    actual,
+                    target,
+                    weight,
+                    completion,
+                    score,
+                    rank,
+                    totalEmployees: employees.length,
+                  };
+                });
+
+                // 按完成度排序
+                const sortedRankings = indicatorRankings.sort((a, b) => b.completion - a.completion);
+
+                return (
+                  <div>
+                    <h4 className="font-semibold text-foreground mb-4">
+                      {selectedEmp.name} - 各项业务完成度排名
+                    </h4>
+                    <div className="space-y-3">
+                      {sortedRankings.map((item, index) => (
+                        <div
+                          key={item.indicator.key}
+                          className="flex items-center justify-between p-4 bg-secondary rounded border border-border"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
+                            <div>
+                              <div className="text-foreground font-medium">
+                                {item.indicator.name} ({item.indicator.unit})
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                实际值: {item.actual} | 目标值: {item.target !== null && item.target !== undefined ? item.target : '不考核'} | 全员排名: {item.rank}/{item.totalEmployees}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">完成度</div>
+                              <div className="text-lg font-bold text-accent">
+                                {item.completion.toFixed(1)}%
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">得分</div>
+                              <div className="text-lg font-bold text-accent">
+                                {item.score.toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </Card>
 
             {/* PDF 导出内容 */}
