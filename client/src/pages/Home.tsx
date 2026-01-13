@@ -1239,26 +1239,26 @@ export default function Home() {
             </Card>
 
             {/* PDF 导出内容 */}
-            <div ref={pdfRef} className="bg-white p-8 hidden" style={{ color: '#000' }}>
-              <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>
+            <div ref={pdfRef} className="bg-white p-8 hidden" style={{ color: '#000', fontSize: '12px' }}>
+              <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>
                 KPI 成绩统计报告
               </h1>
-              <p style={{ marginBottom: '30px', color: '#666' }}>
+              <p style={{ marginBottom: '20px', color: '#666', textAlign: 'center' }}>
                 生成时间: {new Date().toLocaleString()}
               </p>
 
-              {/* 排名 */}
-              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '15px' }}>
-                员工排名
+              {/* 1. 员工总排名 */}
+              <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px', pageBreakBefore: 'auto' }}>
+                1. 员工总排名
               </h2>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '11px' }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #ddd' }}>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>排名</th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>员工名称</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>得分</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>满分</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>完成度</th>
+                  <tr style={{ borderBottom: '2px solid #000' }}>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>员工名称</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>满分</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1270,32 +1270,113 @@ export default function Home() {
                     }))
                     .sort((a, b) => b.score - a.score)
                     .map((emp, index) => {
-                      const percentage =
-                        emp.maxScore > 0 ? (emp.score / emp.maxScore) * 100 : 0;
+                      const percentage = emp.maxScore > 0 ? (emp.score / emp.maxScore) * 100 : 0;
                       return (
-                        <tr
-                          key={emp.id}
-                          style={{
-                            borderBottom: '1px solid #eee',
-                            backgroundColor: index % 2 === 0 ? '#f9f9f9' : '#fff',
-                          }}
-                        >
-                          <td style={{ padding: '10px' }}>{index + 1}</td>
-                          <td style={{ padding: '10px' }}>{emp.name}</td>
-                          <td style={{ padding: '10px', textAlign: 'right' }}>
-                            {emp.score.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'right' }}>
-                            {emp.maxScore.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px', textAlign: 'right' }}>
-                            {percentage.toFixed(1)}%
-                          </td>
+                        <tr key={emp.id} style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '8px' }}>{index + 1}</td>
+                          <td style={{ padding: '8px' }}>{emp.name}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>{emp.score.toFixed(2)}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>{emp.maxScore.toFixed(2)}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>{percentage.toFixed(1)}%</td>
                         </tr>
                       );
                     })}
                 </tbody>
               </table>
+
+              {/* 2. 每位员工的详细数据 */}
+              {employees.map((emp) => (
+                <div key={emp.id} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
+                    2. {emp.name} - 详细成绩
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #000' }}>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>指标名称</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>权重</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getAllIndicators().map((indicator) => {
+                        const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                        const target = emp.targets?.[indicator.key];
+                        const weight = emp.weights?.[indicator.key] || 0;
+                        const score = target !== null && target !== 0
+                          ? Math.min((actual / target) * weight, weight)
+                          : Math.min(actual, weight);
+                        const completion = target !== null && target !== 0
+                          ? ((actual / target) * 100).toFixed(1)
+                          : '—';
+                        return (
+                          <tr key={indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
+                            <td style={{ padding: '8px' }}>{indicator.name}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{actual}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{weight.toFixed(2)}%</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{score.toFixed(2)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{completion}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div style={{ marginBottom: '10px' }}>
+                    <strong>总分: {getEmployeeTotalScore(emp.id).toFixed(2)} / {getEmployeeTotalMaxScore(emp.id).toFixed(2)}</strong>
+                  </div>
+                </div>
+              ))}
+
+              {/* 3. 每项指标的排名 */}
+              {getAllIndicators().map((indicator) => (
+                <div key={indicator.key} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
+                    3. {indicator.name} ({indicator.unit}) - 排名
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #000' }}>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>员工名称</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employees
+                        .map((emp) => {
+                          const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                          const target = emp.targets?.[indicator.key];
+                          const weight = emp.weights?.[indicator.key] || 0;
+                          const score = target !== null && target !== 0
+                            ? Math.min((actual / target) * weight, weight)
+                            : Math.min(actual, weight);
+                          const completion = target !== null && target !== 0
+                            ? ((actual / target) * 100)
+                            : 0;
+                          return { emp, actual, target, weight, score, completion };
+                        })
+                        .sort((a, b) => b.completion - a.completion)
+                        .map((item, index) => (
+                          <tr key={item.emp.id} style={{ borderBottom: '1px solid #ddd' }}>
+                            <td style={{ padding: '8px' }}>{index + 1}</td>
+                            <td style={{ padding: '8px' }}>{item.emp.name}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
 
             {/* 排名（带进度条） */}
