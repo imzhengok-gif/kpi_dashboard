@@ -1504,7 +1504,8 @@ export default function Home() {
 
                   const allRankings = employees
                     .map((e) => {
-                      const eActual = (e.data as Record<string, number>)?.[indicator.key] || 0;
+                      const eActualValue = e[indicator.key];
+                      const eActual = eActualValue !== undefined && eActualValue !== null ? Number(eActualValue) : 0;
                       const eTarget = e.targets?.[indicator.key];
                       const eCompletion = eTarget !== null && eTarget !== 0 ? (eActual / eTarget) * 100 : 0;
                       return { emp: e, completion: eCompletion };
