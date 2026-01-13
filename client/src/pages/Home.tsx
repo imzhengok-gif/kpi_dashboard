@@ -124,12 +124,13 @@ export default function Home() {
         const isEnabled = employee.enabledIndicators?.[key] ?? true;
         if (!isEnabled) return;
 
-        const actual = parseFloat(String(employee[key] || 0));
+        const actualValue = employee[key];
+        const actual = actualValue === null || actualValue === undefined ? null : parseFloat(String(actualValue));
         const target = employee.targets[key] ?? indicator.target;
         const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
         kpi[key] = {
-          actual,
-          score: calculateKPI(actual, target, weightPercentage),
+          actual: actual ?? 0,
+          score: actual === null ? 0 : calculateKPI(actual, target, weightPercentage),
           target,
         };
       });
@@ -138,12 +139,13 @@ export default function Home() {
     // 添加自定义指标
     if (employee.customIndicators) {
       Object.entries(employee.customIndicators).forEach(([key, indicator]) => {
-        const actual = parseFloat(String(employee[key] || 0));
+        const actualValue = employee[key];
+        const actual = actualValue === null || actualValue === undefined ? null : parseFloat(String(actualValue));
         const target = employee.targets[key] ?? indicator.target;
         const weightPercentage = employee.weights[key] ?? indicator.weight;
         kpi[key] = {
-          actual,
-          score: calculateKPI(actual, target, weightPercentage),
+          actual: actual ?? 0,
+          score: actual === null ? 0 : calculateKPI(actual, target, weightPercentage),
           target,
         };
       });
