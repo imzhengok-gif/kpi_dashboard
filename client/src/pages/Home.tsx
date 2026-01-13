@@ -1,110 +1,199 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Download, Plus, Trash2 } from 'lucide-react';
 
-interface KPIData {
+interface KPIIndicator {
+  name: string;
+  target: number;
+  weight: number;
+  unit: string;
+}
+
+interface KPICategory {
+  指标: KPIIndicator[];
+}
+
+interface KPIStructure {
+  [key: string]: KPICategory;
+}
+
+interface EmployeeData {
+  id: string;
+  name: string;
+  [key: string]: string | number;
+}
+
+interface EmployeeKPI {
   [key: string]: {
-    [key: string]: number | string;
+    actual: number;
+    score: number;
   };
 }
 
 export default function Home() {
-  const [kpiData, setKpiData] = useState<KPIData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
+  const [weights, setWeights] = useState<{ [key: string]: { [key: string]: number } }>({});
+  const [employees, setEmployees] = useState<EmployeeData[]>([
+    { id: '1', name: '员工1' },
+    { id: '2', name: '员工2' },
+    { id: '3', name: '员工3' },
+    { id: '4', name: '员工4' },
+    { id: '5', name: '员工5' },
+    { id: '6', name: '员工6' },
+    { id: '7', name: '员工7' },
+    { id: '8', name: '员工8' },
+    { id: '9', name: '员工9' },
+    { id: '10', name: '员工10' },
+    { id: '11', name: '员工11' },
+  ]);
+  const [editingWeights, setEditingWeights] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchKPIStructure = async () => {
       try {
-        const response = await fetch('/kpi_summary.json');
-        const data = await response.json();
-        setKpiData(data);
+        const response = await fetch('/kpi_structure.json');
+        const data: KPIStructure = await response.json();
+        setKpiStructure(data);
+
+        // 初始化权重
+        const initialWeights: { [key: string]: { [key: string]: number } } = {};
+        Object.entries(data).forEach(([category, categoryData]) => {
+          initialWeights[category] = {};
+          categoryData.指标.forEach((indicator) => {
+            const key = indicator.name;
+            initialWeights[category][key] = indicator.weight;
+          });
+        });
+        setWeights(initialWeights);
       } catch (error) {
-        console.error('Failed to load KPI data:', error);
-      } finally {
-        setLoading(false);
+        console.error('Failed to load KPI structure:', error);
       }
     };
 
-    fetchData();
+    fetchKPIStructure();
   }, []);
 
-  // 准备财富管理数据用于图表
-  const wealthManagementData = kpiData?.['财富管理'] ? 
-    Object.entries(kpiData['财富管理']).map(([key, value]) => ({
-      name: key,
-      value: typeof value === 'number' ? value : 0,
-    })) : [];
+  // 计算 KPI 得分
+  const calculateKPI = (actual: number, target: number, weight: number) => {
+    if (target === 0) return 0;
+    const completion = actual / target;
+    const score = Math.min(completion * weight, weight); // 最高分不超过权重
+    return Math.round(score * 10000) / 10000;
+  };
 
-  // 权重分布数据
-  const weightsData = [
-    { name: '有效户', value: 0.055 },
-    { name: '裂变客户', value: 0.015 },
-    { name: '机构业务收入', value: 0.05 },
-    { name: '算法开通', value: 0.02 },
-    { name: '新开户净新增资产', value: 0.03 },
-    { name: '存量净新增资产', value: 0.03 },
-    { name: '产品收入', value: 0.07 },
-    { name: '产品销量', value: 0.03 },
-    { name: '两融收入', value: 0.07 },
-    { name: '两融规模', value: 0.03 },
-  ];
+  // 获取员工的 KPI 数据
+  const getEmployeeKPI = (employeeId: string): EmployeeKPI => {
+    const kpi: EmployeeKPI = {};
+    if (!kpiStructure) return kpi;
 
-  const COLORS = ['#1e40af', '#0891b2', '#0284c7', '#1e3a8a', '#172554', '#ea580c', '#0c4a6e', '#0f766e', '#7c3aed', '#db2777'];
+    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+      categoryData.指标.forEach((indicator) => {
+        const key = `${category}_${indicator.name}`;
+        const actual = parseFloat(String(employees.find(e => e.id === employeeId)?.[key] || 0));
+        const weight = weights[category]?.[indicator.name] || indicator.weight;
+        kpi[key] = {
+          actual,
+          score: calculateKPI(actual, indicator.target, weight),
+        };
+      });
+    });
 
-  // 关键指标卡片数据
-  const keyMetrics = [
-    {
-      label: '目标新增有效户（线下）',
-      value: 108,
-      unit: '户',
-      category: '客户市场',
-    },
-    {
-      label: '目标裂变客户数',
-      value: 143,
-      unit: '户',
-      category: '客户市场',
-    },
-    {
-      label: '目标机构业务收入',
-      value: 1,
-      unit: '万元',
-      category: '机构业务',
-    },
-    {
-      label: '目标产品收入',
-      value: 6,
-      unit: '万元',
-      category: '财富管理',
-    },
-    {
-      label: '目标产品销量',
-      value: 300,
-      unit: '万元',
-      category: '财富管理',
-    },
-    {
-      label: '目标投顾业务净收入',
-      value: 3.5,
-      unit: '万元',
-      category: '财富管理',
-    },
-    {
-      label: '目标两融净利息收入',
-      value: 2,
-      unit: '万元',
-      category: '资本中介',
-    },
-    {
-      label: '目标两融日均规模',
-      value: 270,
-      unit: '万元',
-      category: '资本中介',
-    },
-  ];
+    return kpi;
+  };
 
-  if (loading) {
+  // 计算员工总分
+  const getEmployeeTotalScore = (employeeId: string) => {
+    const kpi = getEmployeeKPI(employeeId);
+    return Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
+  };
+
+  // 处理员工数据输入
+  const handleEmployeeDataChange = (employeeId: string, key: string, value: string) => {
+    setEmployees(
+      employees.map((emp) =>
+        emp.id === employeeId ? { ...emp, [key]: value === '' ? 0 : parseFloat(value) } : emp
+      )
+    );
+  };
+
+  // 处理员工名称变更
+  const handleEmployeeNameChange = (employeeId: string, name: string) => {
+    setEmployees(
+      employees.map((emp) => (emp.id === employeeId ? { ...emp, name } : emp))
+    );
+  };
+
+  // 添加员工
+  const addEmployee = () => {
+    const newId = String(Math.max(...employees.map(e => parseInt(e.id))) + 1);
+    setEmployees([...employees, { id: newId, name: `员工${newId}` }]);
+  };
+
+  // 删除员工
+  const removeEmployee = (employeeId: string) => {
+    if (employees.length > 1) {
+      setEmployees(employees.filter((emp) => emp.id !== employeeId));
+    }
+  };
+
+  // 处理权重变更
+  const handleWeightChange = (category: string, indicatorName: string, value: string) => {
+    const newWeight = parseFloat(value) || 0;
+    setWeights({
+      ...weights,
+      [category]: {
+        ...weights[category],
+        [indicatorName]: newWeight,
+      },
+    });
+  };
+
+  // 导出为 Excel
+  const exportToExcel = () => {
+    if (!kpiStructure) return;
+
+    // 创建 CSV 内容
+    let csv = '员工名称';
+
+    // 添加所有指标列
+    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+      categoryData.指标.forEach((indicator) => {
+        csv += `,${category}_${indicator.name}(实际),${category}_${indicator.name}(得分)`;
+      });
+    });
+    csv += ',总分\n';
+
+    // 添加员工数据
+    employees.forEach((employee) => {
+      csv += employee.name;
+      const kpi = getEmployeeKPI(employee.id);
+      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+        categoryData.指标.forEach((indicator) => {
+          const key = `${category}_${indicator.name}`;
+          const actual = kpi[key]?.actual || 0;
+          const score = kpi[key]?.score || 0;
+          csv += `,${actual},${score}`;
+        });
+      });
+      csv += `,${getEmployeeTotalScore(employee.id)}\n`;
+    });
+
+    // 下载 CSV 文件
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `KPI计算结果_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (!kpiStructure) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -118,187 +207,267 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <div 
-        className="relative h-64 md:h-80 bg-cover bg-center flex items-center justify-center overflow-hidden"
-        style={{
-          backgroundImage: 'url(/images/hero-background.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="absolute inset-0 bg-black/40"></div>
-        <div className="relative z-10 text-center text-white">
-          <h1 className="text-4xl md:text-5xl font-bold mb-2">KPI 数据可视化仪表板</h1>
-          <p className="text-lg md:text-xl text-gray-100">郑浩生关键绩效指标分析</p>
+      <div className="bg-primary text-primary-foreground py-8">
+        <div className="container">
+          <h1 className="text-4xl font-bold mb-2">KPI 计算管理系统</h1>
+          <p className="text-lg opacity-90">输入员工数据，自动计算 KPI 成绩</p>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="container py-12">
-        {/* 关键指标卡片网格 */}
-        <section className="mb-12">
-          <h2 className="text-3xl font-bold mb-8 text-foreground">关键指标概览</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {keyMetrics.map((metric, index) => (
-              <div key={index} className="kpi-card">
-                <div className="kpi-label">{metric.label}</div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="kpi-value">{metric.value}</span>
-                  <span className="text-sm text-muted-foreground">{metric.unit}</span>
-                </div>
-                <div className="mt-3 text-xs font-medium text-accent">{metric.category}</div>
-              </div>
-            ))}
-          </div>
-        </section>
+        <Tabs defaultValue="data-input" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
+            <TabsTrigger value="data-input">数据输入</TabsTrigger>
+            <TabsTrigger value="weight-config">权重配置</TabsTrigger>
+            <TabsTrigger value="results">结果统计</TabsTrigger>
+          </TabsList>
 
-        {/* 数据可视化标签页 */}
-        <section className="mb-12">
-          <Tabs defaultValue="wealth" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-8">
-              <TabsTrigger value="wealth">财富管理指标</TabsTrigger>
-              <TabsTrigger value="weights">权重分布</TabsTrigger>
-              <TabsTrigger value="trend">趋势分析</TabsTrigger>
-            </TabsList>
+          {/* 数据输入标签页 */}
+          <TabsContent value="data-input" className="space-y-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-foreground">员工 KPI 数据输入</h2>
+              <Button onClick={addEmployee} variant="outline" size="sm">
+                <Plus className="w-4 h-4 mr-2" />
+                添加员工
+              </Button>
+            </div>
 
-            {/* 财富管理指标图表 */}
-            <TabsContent value="wealth" className="chart-container">
-              <h3 className="text-xl font-bold mb-6 text-foreground">财富管理关键 KPI 目标</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={wealthManagementData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#bfdbfe" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45} 
-                    textAnchor="end" 
-                    height={100}
-                    tick={{ fill: '#0c2340', fontSize: 12 }}
-                  />
-                  <YAxis tick={{ fill: '#0c2340' }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #bfdbfe' }}
-                    labelStyle={{ color: '#0c2340' }}
-                  />
-                  <Bar dataKey="value" fill="#1e40af" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </TabsContent>
+            <div className="space-y-6">
+              {employees.map((employee) => (
+                <Card key={employee.id} className="p-6">
+                  <div className="flex justify-between items-center mb-6">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
+                        员工名称
+                      </label>
+                      <Input
+                        value={employee.name}
+                        onChange={(e) => handleEmployeeNameChange(employee.id, e.target.value)}
+                        className="max-w-xs"
+                      />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-muted-foreground">总分</div>
+                      <div className="text-3xl font-bold text-primary">
+                        {getEmployeeTotalScore(employee.id).toFixed(2)}
+                      </div>
+                    </div>
+                    {employees.length > 1 && (
+                      <Button
+                        onClick={() => removeEmployee(employee.id)}
+                        variant="ghost"
+                        size="sm"
+                        className="ml-4"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
 
-            {/* 权重分布图表 */}
-            <TabsContent value="weights" className="chart-container">
-              <h3 className="text-xl font-bold mb-6 text-foreground">KPI 权重分布</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <PieChart>
-                  <Pie
-                    data={weightsData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value }) => `${name}: ${(value * 100).toFixed(1)}%`}
-                    outerRadius={120}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {weightsData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value: number) => `${(value * 100).toFixed(1)}%`}
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #bfdbfe' }}
-                    labelStyle={{ color: '#0c2340' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </TabsContent>
+                  {/* 指标输入网格 */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                      categoryData.指标.map((indicator) => {
+                        const key = `${category}_${indicator.name}`;
+                        const actual = parseFloat(String(employee[key] || 0));
+                        const kpi = getEmployeeKPI(employee.id);
+                        const score = kpi[key]?.score || 0;
+                        const weight = weights[category]?.[indicator.name] || indicator.weight;
 
-            {/* 趋势分析 */}
-            <TabsContent value="trend" className="chart-container">
-              <h3 className="text-xl font-bold mb-6 text-foreground">业务线收入趋势预测</h3>
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={[
-                  { month: '1月', 机构业务: 1, 财富管理: 6, 资本中介: 2 },
-                  { month: '2月', 机构业务: 1.2, 财富管理: 6.5, 资本中介: 2.1 },
-                  { month: '3月', 机构业务: 1.5, 财富管理: 7, 资本中介: 2.3 },
-                  { month: '4月', 机构业务: 1.8, 财富管理: 7.5, 资本中介: 2.5 },
-                  { month: '5月', 机构业务: 2, 财富管理: 8, 资本中介: 2.7 },
-                  { month: '6月', 机构业务: 2.2, 财富管理: 8.5, 资本中介: 2.9 },
-                ]}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#bfdbfe" />
-                  <XAxis dataKey="month" tick={{ fill: '#0c2340' }} />
-                  <YAxis tick={{ fill: '#0c2340' }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #bfdbfe' }}
-                    labelStyle={{ color: '#0c2340' }}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="机构业务" stroke="#1e40af" strokeWidth={2} dot={{ fill: '#1e40af' }} />
-                  <Line type="monotone" dataKey="财富管理" stroke="#0891b2" strokeWidth={2} dot={{ fill: '#0891b2' }} />
-                  <Line type="monotone" dataKey="资本中介" stroke="#ea580c" strokeWidth={2} dot={{ fill: '#ea580c' }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </TabsContent>
-          </Tabs>
-        </section>
+                        return (
+                          <div key={key} className="bg-secondary p-4 rounded-lg">
+                            <label className="block text-sm font-medium text-foreground mb-2">
+                              {indicator.name}
+                            </label>
+                            <div className="flex gap-2 mb-2">
+                              <Input
+                                type="number"
+                                placeholder="实际值"
+                                value={actual || ''}
+                                onChange={(e) =>
+                                  handleEmployeeDataChange(employee.id, key, e.target.value)
+                                }
+                                className="flex-1"
+                              />
+                              <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
+                                {indicator.unit}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mb-1">
+                              目标: {indicator.target} {indicator.unit}
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-muted-foreground">
+                                完成度: {((actual / indicator.target) * 100).toFixed(1)}%
+                              </span>
+                              <span className="text-sm font-bold text-accent">
+                                得分: {score.toFixed(2)} / {weight.toFixed(3)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
 
-        {/* 业务线分类卡片 */}
-        <section>
-          <h2 className="text-3xl font-bold mb-8 text-foreground">业务线详情</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* 客户市场 */}
-            <Card className="p-6 bg-card text-card-foreground border-l-4 border-l-primary">
-              <h3 className="text-xl font-bold mb-4 text-foreground">客户市场</h3>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">新增有效户</p>
-                  <p className="text-2xl font-bold text-primary">108户</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">裂变客户数</p>
-                  <p className="text-2xl font-bold text-primary">143户</p>
-                </div>
+            <div className="flex gap-4 justify-end">
+              <Button onClick={exportToExcel} className="gap-2">
+                <Download className="w-4 h-4" />
+                导出为 CSV
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* 权重配置标签页 */}
+          <TabsContent value="weight-config" className="space-y-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-foreground">权重配置</h2>
+              {!editingWeights ? (
+                <Button onClick={() => setEditingWeights(true)} variant="outline">
+                  编辑权重
+                </Button>
+              ) : (
+                <Button onClick={() => setEditingWeights(false)} variant="default">
+                  完成编辑
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-8">
+              {Object.entries(kpiStructure).map(([category, categoryData]) => {
+                const categoryTotal = Object.values(weights[category] || {}).reduce(
+                  (sum, w) => sum + w,
+                  0
+                );
+
+                return (
+                  <Card key={category} className="p-6">
+                    <h3 className="text-xl font-bold text-foreground mb-4">{category}</h3>
+                    <div className="space-y-4">
+                      {categoryData.指标.map((indicator) => {
+                        const weight = weights[category]?.[indicator.name] || indicator.weight;
+
+                        return (
+                          <div key={indicator.name} className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <label className="block text-sm font-medium text-foreground">
+                                {indicator.name}
+                              </label>
+                              <p className="text-xs text-muted-foreground">
+                                目标: {indicator.target} {indicator.unit}
+                              </p>
+                            </div>
+                            {editingWeights ? (
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.001"
+                                  value={weight}
+                                  onChange={(e) =>
+                                    handleWeightChange(category, indicator.name, e.target.value)
+                                  }
+                                  className="w-24"
+                                />
+                                <span className="text-sm text-muted-foreground">权重</span>
+                              </div>
+                            ) : (
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-primary">{weight.toFixed(3)}</div>
+                                <p className="text-xs text-muted-foreground">权重</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-foreground">分类总权重</span>
+                        <span className={`text-lg font-bold ${categoryTotal > 1 ? 'text-destructive' : 'text-primary'}`}>
+                          {categoryTotal.toFixed(3)}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <Card className="p-6 bg-secondary">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-bold text-foreground">全部权重总和</span>
+                <span className="text-2xl font-bold text-primary">
+                  {Object.values(weights)
+                    .flatMap((cat) => Object.values(cat))
+                    .reduce((sum, w) => sum + w, 0)
+                    .toFixed(3)}
+                </span>
               </div>
             </Card>
+          </TabsContent>
 
-            {/* 机构业务 */}
-            <Card className="p-6 bg-card text-card-foreground border-l-4 border-l-accent">
-              <h3 className="text-xl font-bold mb-4 text-foreground">机构业务</h3>
+          {/* 结果统计标签页 */}
+          <TabsContent value="results" className="space-y-6">
+            <h2 className="text-2xl font-bold text-foreground mb-6">KPI 成绩统计</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+              {employees.map((employee) => {
+                const totalScore = getEmployeeTotalScore(employee.id);
+                const maxScore = Object.values(weights)
+                  .flatMap((cat) => Object.values(cat))
+                  .reduce((sum, w) => sum + w, 0);
+
+                return (
+                  <Card key={employee.id} className="p-6 border-l-4 border-l-primary">
+                    <h3 className="text-lg font-bold text-foreground mb-2">{employee.name}</h3>
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-sm text-muted-foreground">总分</p>
+                        <p className="text-3xl font-bold text-primary">{totalScore.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">满分</p>
+                        <p className="text-lg font-semibold text-foreground">{maxScore.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">完成度</p>
+                        <p className="text-lg font-semibold text-accent">
+                          {((totalScore / maxScore) * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <Card className="p-6">
+              <h3 className="text-xl font-bold text-foreground mb-4">排名</h3>
               <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">业务收入</p>
-                  <p className="text-2xl font-bold text-accent">1万元</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">算法开通数</p>
-                  <p className="text-2xl font-bold text-accent">4户</p>
-                </div>
+                {employees
+                  .map((emp) => ({
+                    ...emp,
+                    score: getEmployeeTotalScore(emp.id),
+                  }))
+                  .sort((a, b) => b.score - a.score)
+                  .map((emp, index) => (
+                    <div key={emp.id} className="flex items-center justify-between p-3 bg-secondary rounded">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-bold text-primary w-8">{index + 1}</span>
+                        <span className="font-medium text-foreground">{emp.name}</span>
+                      </div>
+                      <span className="text-lg font-bold text-accent">{emp.score.toFixed(2)}</span>
+                    </div>
+                  ))}
               </div>
             </Card>
-
-            {/* 资本中介 */}
-            <Card className="p-6 bg-card text-card-foreground border-l-4 border-l-chart-1">
-              <h3 className="text-xl font-bold mb-4 text-foreground">资本中介</h3>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">两融净利息收入</p>
-                  <p className="text-2xl font-bold text-chart-1">2万元</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">两融日均规模</p>
-                  <p className="text-2xl font-bold text-chart-1">270万元</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </section>
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Footer */}
-      <footer className="bg-secondary text-secondary-foreground py-8 mt-16">
-        <div className="container text-center">
-          <p className="text-sm">© 2024 KPI 数据可视化仪表板 | 郑浩生关键绩效指标管理系统</p>
-        </div>
-      </footer>
     </div>
   );
 }
