@@ -1271,20 +1271,20 @@ export default function Home() {
 
                 const indicators = getAllIndicators();
                 const indicatorRankings = indicators.map((indicator) => {
-                  const actual = (selectedEmp.data as Record<string, number>)?.[indicator.key] || 0;
+                  const actual = selectedEmp[indicator.key] !== null && selectedEmp[indicator.key] !== undefined ? parseFloat(String(selectedEmp[indicator.key])) : null;
                   const target = selectedEmp.targets?.[indicator.key];
                   const weight = selectedEmp.weights?.[indicator.key] || 0;
-                  const completion = target !== null && target !== 0 ? (actual / target) * 100 : 0;
-                  const score = target !== null && target !== 0
+                  const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
+                  const score = actual !== null && target !== null && target !== 0
                     ? Math.min((actual / target) * weight, weight)
-                    : Math.min(actual, weight);
+                    : actual !== null ? Math.min(actual, weight) : 0;
 
                   // 计算该指标在所有员工中的排名
                   const allRankings = employees
                     .map((emp) => {
-                      const empActual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                      const empActual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
                       const empTarget = emp.targets?.[indicator.key];
-                      const empCompletion = empTarget !== null && empTarget !== 0 ? (empActual / empTarget) * 100 : 0;
+                      const empCompletion = empActual !== null && empTarget !== null && empTarget !== 0 ? (empActual / empTarget) * 100 : 0;
                       return { emp, completion: empCompletion };
                     })
                     .sort((a, b) => b.completion - a.completion);
@@ -1415,13 +1415,13 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {getAllIndicators().map((indicator) => {
-                        const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                        const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
                         const target = emp.targets?.[indicator.key];
                         const weight = emp.weights?.[indicator.key] || 0;
-                        const score = target !== null && target !== 0
+                        const score = actual !== null && target !== null && target !== 0
                           ? Math.min((actual / target) * weight, weight)
-                          : Math.min(actual, weight);
-                        const completion = target !== null && target !== 0
+                          : actual !== null ? Math.min(actual, weight) : 0;
+                        const completion = actual !== null && target !== null && target !== 0
                           ? ((actual / target) * 100).toFixed(1)
                           : '—';
                         return (
@@ -1463,13 +1463,13 @@ export default function Home() {
                     <tbody>
                       {employees
                         .map((emp) => {
-                          const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                          const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
                           const target = emp.targets?.[indicator.key];
                           const weight = emp.weights?.[indicator.key] || 0;
-                          const score = target !== null && target !== 0
+                          const score = actual !== null && target !== null && target !== 0
                             ? Math.min((actual / target) * weight, weight)
-                            : Math.min(actual, weight);
-                          const completion = target !== null && target !== 0
+                            : actual !== null ? Math.min(actual, weight) : 0;
+                          const completion = actual !== null && target !== null && target !== 0
                             ? ((actual / target) * 100)
                             : 0;
                           return { emp, actual, target, weight, score, completion };
@@ -1494,13 +1494,13 @@ export default function Home() {
               {employees.map((emp) => {
                 const indicators = getAllIndicators();
                 const indicatorRankings = indicators.map((indicator) => {
-                  const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                  const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
                   const target = emp.targets?.[indicator.key];
                   const weight = emp.weights?.[indicator.key] || 0;
-                  const completion = target !== null && target !== 0 ? (actual / target) * 100 : 0;
-                  const score = target !== null && target !== 0
+                  const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
+                  const score = actual !== null && target !== null && target !== 0
                     ? Math.min((actual / target) * weight, weight)
-                    : Math.min(actual, weight);
+                    : actual !== null ? Math.min(actual, weight) : 0;
 
                   const allRankings = employees
                     .map((e) => {
