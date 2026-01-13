@@ -1191,7 +1191,7 @@ export default function Home() {
                   <option value="">—— 请选择指标 ——</option>
                   {getAllIndicators().map((indicator) => (
                     <option key={indicator.key} value={indicator.key}>
-                      {indicator.name}
+                      {indicator.name} {indicator.unit ? `(${indicator.unit})` : ''}
                     </option>
                   ))}
                 </select>
