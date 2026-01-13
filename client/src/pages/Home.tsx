@@ -64,6 +64,7 @@ export default function Home() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [addingCustom, setAddingCustom] = useState<{ employeeId: string; name: string; unit: string; weight: number } | null>(null);
   const [managingIndicators, setManagingIndicators] = useState<string | null>(null);
+  const [selectedIndicatorForRanking, setSelectedIndicatorForRanking] = useState<string | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,6 +181,62 @@ export default function Home() {
     }
 
     return maxScore;
+  };
+
+  // 获取所有指标
+  const getAllIndicators = () => {
+    const indicators: Array<{ key: string; name: string }> = [];
+    if (kpiStructure) {
+      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+        categoryData.指标.forEach((indicator) => {
+          indicators.push({
+            key: `${category}_${indicator.name}`,
+            name: indicator.name,
+          });
+        });
+      });
+    }
+    employees.forEach((employee) => {
+      if (employee.customIndicators) {
+        Object.entries(employee.customIndicators).forEach(([key, indicator]) => {
+          if (!indicators.find((i) => i.key === key)) {
+            indicators.push({
+              key,
+              name: indicator.name,
+            });
+          }
+        });
+      }
+    });
+    return indicators;
+  };
+
+  // 获取单项指标的排名
+  const getIndicatorRanking = (indicatorKey: string) => {
+    const ranking = employees
+      .map((employee) => {
+        const kpi = getEmployeeKPI(employee.id);
+        const indicatorData = kpi[indicatorKey];
+        if (!indicatorData) {
+          return null;
+        }
+        return {
+          employeeId: employee.id,
+          employeeName: employee.name,
+          score: indicatorData.score,
+          completionRate: indicatorData.target && indicatorData.target !== 0
+            ? (indicatorData.actual / indicatorData.target) * 100
+            : 0,
+        };
+      })
+      .filter((item) => item !== null)
+      .sort((a, b) => (b?.score || 0) - (a?.score || 0)) as Array<{
+        employeeId: string;
+        employeeName: string;
+        score: number;
+        completionRate: number;
+      }>;
+    return ranking;
   };
 
   // 处理员工数据输入
@@ -1089,6 +1146,63 @@ export default function Home() {
                 导出 PDF 报告
               </Button>
             </div>
+
+            {/* 单项指标排名选择 */}
+            <Card className="p-6 mb-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">单项指标排名</h3>
+              <div className="mb-4">
+                <label className="text-sm font-medium text-foreground mb-2 block">
+                  选择考核指标
+                </label>
+                <select
+                  value={selectedIndicatorForRanking || ''}
+                  onChange={(e) => setSelectedIndicatorForRanking(e.target.value || null)}
+                  className="w-full p-2 border border-border rounded bg-background text-foreground"
+                >
+                  <option value="">—— 请选择指标 ——</option>
+                  {getAllIndicators().map((indicator) => (
+                    <option key={indicator.key} value={indicator.key}>
+                      {indicator.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedIndicatorForRanking && (
+                <div>
+                  <h4 className="font-semibold text-foreground mb-4">
+                    {getAllIndicators().find((i) => i.key === selectedIndicatorForRanking)?.name} - 员工排名
+                  </h4>
+                  <div className="space-y-2">
+                    {getIndicatorRanking(selectedIndicatorForRanking).map((item, index) => (
+                      <div
+                        key={item.employeeId}
+                        className="flex items-center justify-between p-3 bg-secondary rounded border border-border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
+                          <span className="text-foreground font-medium">{item.employeeName}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <div className="text-sm text-muted-foreground">完成度</div>
+                            <div className="text-lg font-bold text-accent">
+                              {item.completionRate.toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-muted-foreground">得分</div>
+                            <div className="text-lg font-bold text-accent">
+                              {item.score.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
 
             {/* PDF 导出内容 */}
             <div ref={pdfRef} className="bg-white p-8 hidden" style={{ color: '#000' }}>
