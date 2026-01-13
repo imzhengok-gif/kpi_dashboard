@@ -742,26 +742,59 @@ export default function Home() {
                     {managingIndicators === employee.id && (
                       <Card className="p-4 mb-6 bg-secondary/50 border-accent">
                         <h4 className="font-semibold text-foreground mb-4">管理考核项目</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                          {Object.entries(kpiStructure).map(([category, categoryData]) =>
-                            categoryData.指标.map((indicator) => {
-                              const key = `${category}_${indicator.name}`;
-                              const isEnabled = employee.enabledIndicators?.[key] ?? true;
-                              return (
-                                <div
-                                  key={key}
-                                  className="flex items-center gap-2 p-3 bg-background rounded border border-border"
-                                >
-                                  <Checkbox
-                                    checked={isEnabled}
-                                    onCheckedChange={() => toggleIndicatorEnabled(employee.id, key)}
-                                  />
-                                  <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
-                                    {indicator.name}
-                                  </label>
-                                </div>
-                              );
-                            })
+                        <div className="space-y-4">
+                          {/* 原考核项目 */}
+                          <div>
+                            <h5 className="text-sm font-medium text-muted-foreground mb-2">原考核项目</h5>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                              {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                                categoryData.指标.map((indicator) => {
+                                  const key = `${category}_${indicator.name}`;
+                                  const isEnabled = employee.enabledIndicators?.[key] ?? true;
+                                  return (
+                                    <div
+                                      key={key}
+                                      className="flex items-center gap-2 p-3 bg-background rounded border border-border"
+                                    >
+                                      <Checkbox
+                                        checked={isEnabled}
+                                        onCheckedChange={() => toggleIndicatorEnabled(employee.id, key)}
+                                      />
+                                      <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
+                                        {indicator.name}
+                                      </label>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 自定义考核项目 */}
+                          {employee.customIndicators && Object.keys(employee.customIndicators).length > 0 && (
+                            <div>
+                              <h5 className="text-sm font-medium text-muted-foreground mb-2">自定义考核项目</h5>
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                {Object.entries(employee.customIndicators).map(([key, indicator]) => (
+                                  <div
+                                    key={key}
+                                    className="flex items-center gap-2 p-3 bg-background rounded border border-border"
+                                  >
+                                    <span className="text-sm font-medium text-foreground flex-1">
+                                      {indicator.name}
+                                    </span>
+                                    <Button
+                                      onClick={() => removeCustomIndicator(employee.id, key)}
+                                      variant="ghost"
+                                      size="sm"
+                                      className="p-0 h-auto"
+                                    >
+                                      <X className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
                       </Card>
@@ -885,13 +918,6 @@ export default function Home() {
                                 <label className="block text-sm font-medium text-foreground">
                                   {indicator.name}
                                 </label>
-                                <Button
-                                  onClick={() => removeCustomIndicator(employee.id, key)}
-                                  variant="ghost"
-                                  size="sm"
-                                >
-                                  <X className="w-4 h-4 text-destructive" />
-                                </Button>
                               </div>
                               <div className="flex gap-2 mb-2">
                                 <Input
