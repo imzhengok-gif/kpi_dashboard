@@ -909,7 +909,6 @@ export default function Home() {
                                         handleEmployeeTargetChange(employee.id, key, e.target.value)
                                       }
                                       className="flex-1 text-xs"
-                                      min="0"
                                     />
                                     <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
                                       {indicator.unit}
@@ -1016,7 +1015,6 @@ export default function Home() {
                                         handleEmployeeTargetChange(employee.id, key, e.target.value)
                                       }
                                       className="flex-1 text-xs"
-                                      min="0"
                                     />
                                     <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
                                       {indicator.unit}
