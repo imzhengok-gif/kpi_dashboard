@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import html2pdf from 'html2pdf.js';
+
 import * as XLSX from 'xlsx';
 
 interface KPIIndicator {
@@ -566,15 +566,16 @@ export default function Home() {
     if (!pdfRef.current) return;
 
     const element = pdfRef.current;
-    const opt = {
-      margin: 10,
-      filename: `KPI报告_${new Date().toISOString().split('T')[0]}.pdf`,
-      image: { type: 'png' as const, quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { orientation: 'portrait' as const, unit: 'mm', format: 'a4' },
-    };
+    const printWindow = window.open('', '', 'width=800,height=600');
+    if (!printWindow) return;
 
-    html2pdf().set(opt).from(element).save();
+    printWindow.document.write(element.innerHTML);
+    printWindow.document.close();
+    
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   if (!kpiStructure) {
