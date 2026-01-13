@@ -246,7 +246,7 @@ export default function Home() {
   const handleEmployeeDataChange = (employeeId: string, key: string, value: string) => {
     setEmployees(
       employees.map((emp) =>
-        emp.id === employeeId ? { ...emp, [key]: value === '' ? 0 : parseFloat(value) } : emp
+        emp.id === employeeId ? { ...emp, data: { ...(emp.data as Record<string, number>), [key]: value === '' ? 0 : parseFloat(value) } } : emp
       )
     );
   };
@@ -885,7 +885,7 @@ export default function Home() {
                                   type="number"
                                   step="any"
                                   placeholder="实际值"
-                                  value={actual || ''}
+                                  value={actual !== undefined && actual !== null ? actual : ''}
                                   onChange={(e) =>
                                     handleEmployeeDataChange(employee.id, key, e.target.value)
                                   }
@@ -989,7 +989,7 @@ export default function Home() {
                                   type="number"
                                   step="any"
                                   placeholder="实际值"
-                                  value={actual || ''}
+                                  value={actual !== undefined && actual !== null ? actual : ''}
                                   onChange={(e) =>
                                     handleEmployeeDataChange(employee.id, key, e.target.value)
                                   }
