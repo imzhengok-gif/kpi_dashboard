@@ -894,9 +894,6 @@ export default function Home() {
                               {/* 目标值编辑 */}
                               {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
                                 <div className="mb-2">
-                                  <label className="text-xs text-muted-foreground mb-1 block">
-                                    目标值
-                                  </label>
                                   <div className="flex gap-2">
                                     <Input
                                       type="number"
@@ -912,18 +909,11 @@ export default function Home() {
                                     </span>
                                   </div>
                                 </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  目标: {target !== null && target !== undefined ? `${target} ${indicator.unit}` : '不考核'}
-                                </div>
-                              )}
+                              ) : null}
 
                               {/* 权重编辑 */}
                               {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
                                 <div className="mb-2">
-                                  <label className="text-xs text-muted-foreground mb-1 block">
-                                    权重占比
-                                  </label>
                                   <div className="flex gap-2">
                                     <Input
                                       type="number"
@@ -939,17 +929,9 @@ export default function Home() {
                                     </span>
                                   </div>
                                 </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  权重: {weightPercentage.toFixed(2)}%
-                                </div>
-                              )}
+                              ) : null}
 
                               <div className="space-y-2">
-                                <div className="flex justify-between items-center text-xs">
-                                  <span className="text-muted-foreground">{actual} / {target !== null && target !== undefined ? target : '—'}</span>
-                                  <span className="text-muted-foreground">{weightPercentage.toFixed(2)}%</span>
-                                </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
                                     className="h-full bg-accent transition-all duration-300"
@@ -960,13 +942,13 @@ export default function Home() {
                                     }}
                                   />
                                 </div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-medium text-foreground">
-                                    {score.toFixed(2)} / {weightPercentage.toFixed(2)}
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-medium text-foreground">
+                                    {score.toFixed(2)}
                                   </span>
-                                  <span className="text-xs text-muted-foreground">
+                                  <span className="text-muted-foreground">
                                     {target !== null && target !== 0
-                                      ? `${((actual / target) * 100).toFixed(1)}%`
+                                      ? `${((actual / target) * 100).toFixed(0)}%`
                                       : '—'}
                                   </span>
                                 </div>
@@ -1060,10 +1042,6 @@ export default function Home() {
                               )}
 
                               <div className="space-y-2">
-                                <div className="flex justify-between items-center text-xs">
-                                  <span className="text-muted-foreground">{actual} / {target !== null && target !== undefined ? target : '—'}</span>
-                                  <span className="text-muted-foreground">{weightPercentage.toFixed(2)}%</span>
-                                </div>
                                 <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                                   <div
                                     className="h-full bg-accent transition-all duration-300"
@@ -1074,13 +1052,13 @@ export default function Home() {
                                     }}
                                   />
                                 </div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-medium text-foreground">
-                                    {score.toFixed(2)} / {weightPercentage.toFixed(2)}
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="font-medium text-foreground">
+                                    {score.toFixed(2)}
                                   </span>
-                                  <span className="text-xs text-muted-foreground">
+                                  <span className="text-muted-foreground">
                                     {target !== null && target !== 0
-                                      ? `${((actual / target) * 100).toFixed(1)}%`
+                                      ? `${((actual / target) * 100).toFixed(0)}%`
                                       : '—'}
                                   </span>
                                 </div>
