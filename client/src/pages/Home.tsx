@@ -1484,6 +1484,78 @@ export default function Home() {
                   </table>
                 </div>
               ))}
+
+              {/* 4. 员工各项业务完成度排名 */}
+              {employees.map((emp) => {
+                const indicators = getAllIndicators();
+                const indicatorRankings = indicators.map((indicator) => {
+                  const actual = (emp.data as Record<string, number>)?.[indicator.key] || 0;
+                  const target = emp.targets?.[indicator.key];
+                  const weight = emp.weights?.[indicator.key] || 0;
+                  const completion = target !== null && target !== 0 ? (actual / target) * 100 : 0;
+                  const score = target !== null && target !== 0
+                    ? Math.min((actual / target) * weight, weight)
+                    : Math.min(actual, weight);
+
+                  const allRankings = employees
+                    .map((e) => {
+                      const eActual = (e.data as Record<string, number>)?.[indicator.key] || 0;
+                      const eTarget = e.targets?.[indicator.key];
+                      const eCompletion = eTarget !== null && eTarget !== 0 ? (eActual / eTarget) * 100 : 0;
+                      return { emp: e, completion: eCompletion };
+                    })
+                    .sort((a, b) => b.completion - a.completion);
+
+                  const rank = allRankings.findIndex(r => r.emp.id === emp.id) + 1;
+
+                  return {
+                    indicator,
+                    actual,
+                    target,
+                    weight,
+                    completion,
+                    score,
+                    rank,
+                    totalEmployees: employees.length,
+                  };
+                });
+
+                const sortedRankings = indicatorRankings.sort((a, b) => b.completion - a.completion);
+
+                return (
+                  <div key={emp.id} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
+                      4. {emp.name} - 各项业务完成度排名
+                    </h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #000' }}>
+                          <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
+                          <th style={{ padding: '8px', textAlign: 'left' }}>业务项目</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>全员排名</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedRankings.map((item, index) => (
+                          <tr key={item.indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
+                            <td style={{ padding: '8px' }}>{index + 1}</td>
+                            <td style={{ padding: '8px' }}>{item.indicator.name}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.rank}/{item.totalEmployees}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
             </div>
 
             {/* 排名（带进度条） */}
