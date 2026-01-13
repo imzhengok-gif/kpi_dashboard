@@ -3,22 +3,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from 'recharts';
 import html2pdf from 'html2pdf.js';
+import * as XLSX from 'xlsx';
 
 interface KPIIndicator {
   name: string;
@@ -43,7 +31,8 @@ interface EmployeeData {
   targets: { [key: string]: number | null };
   weights: { [key: string]: number };
   customIndicators?: { [key: string]: KPIIndicator };
-  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | undefined;
+  enabledIndicators?: { [key: string]: boolean };
+  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | { [key: string]: boolean } | undefined;
 }
 
 interface EmployeeKPI {
@@ -57,25 +46,26 @@ interface EmployeeKPI {
 export default function Home() {
   const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
   const [employees, setEmployees] = useState<EmployeeData[]>([
-    { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {} },
-    { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {} },
-    { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {} },
-    { id: '4', name: '员工4', targets: {}, weights: {}, customIndicators: {} },
-    { id: '5', name: '员工5', targets: {}, weights: {}, customIndicators: {} },
-    { id: '6', name: '员工6', targets: {}, weights: {}, customIndicators: {} },
-    { id: '7', name: '员工7', targets: {}, weights: {}, customIndicators: {} },
-    { id: '8', name: '员工8', targets: {}, weights: {}, customIndicators: {} },
-    { id: '9', name: '员工9', targets: {}, weights: {}, customIndicators: {} },
-    { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {} },
-    { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {} },
+    { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '4', name: '员工4', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '5', name: '员工5', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '6', name: '员工6', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '7', name: '员工7', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '8', name: '员工8', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '9', name: '员工9', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
+    { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
   ]);
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
   const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [copySuccess, setCopySuccess] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [addingCustom, setAddingCustom] = useState<{ employeeId: string; name: string; unit: string; weight: number } | null>(null);
+  const [managingIndicators, setManagingIndicators] = useState<string | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchKPIStructure = async () => {
@@ -83,21 +73,21 @@ export default function Home() {
         const response = await fetch('/kpi_structure.json');
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
-        const firstCategory = Object.keys(data)[0];
-        setSelectedCategory(firstCategory);
 
         setEmployees((prevEmployees) =>
           prevEmployees.map((emp) => {
             const targets: { [key: string]: number | null } = {};
             const weights: { [key: string]: number } = {};
+            const enabledIndicators: { [key: string]: boolean } = {};
             Object.entries(data).forEach(([category, categoryData]) => {
               categoryData.指标.forEach((indicator) => {
                 const key = `${category}_${indicator.name}`;
                 targets[key] = indicator.target;
                 weights[key] = indicator.weight * 100;
+                enabledIndicators[key] = true;
               });
             });
-            return { ...emp, targets, weights, customIndicators: {} };
+            return { ...emp, targets, weights, customIndicators: {}, enabledIndicators };
           })
         );
       } catch (error) {
@@ -129,6 +119,9 @@ export default function Home() {
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
       categoryData.指标.forEach((indicator) => {
         const key = `${category}_${indicator.name}`;
+        const isEnabled = employee.enabledIndicators?.[key] ?? true;
+        if (!isEnabled) return;
+
         const actual = parseFloat(String(employee[key] || 0));
         const target = employee.targets[key] ?? indicator.target;
         const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
@@ -167,28 +160,26 @@ export default function Home() {
   const getEmployeeTotalMaxScore = (employeeId: string) => {
     const employee = employees.find((e) => e.id === employeeId);
     if (!employee) return 0;
-    return Object.values(employee.weights).reduce((sum, w) => sum + w, 0);
-  };
+    if (!kpiStructure) return 0;
 
-  // 获取业务线得分
-  const getCategoryScores = (employeeId: string) => {
-    if (!kpiStructure) return {};
-    const employee = employees.find((e) => e.id === employeeId);
-    if (!employee) return {};
-
-    const categoryScores: { [key: string]: number } = {};
+    let maxScore = 0;
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      let categoryScore = 0;
       categoryData.指标.forEach((indicator) => {
         const key = `${category}_${indicator.name}`;
-        const actual = parseFloat(String(employee[key] || 0));
-        const target = employee.targets[key] ?? indicator.target;
-        const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
-        categoryScore += calculateKPI(actual, target, weightPercentage);
+        const isEnabled = employee.enabledIndicators?.[key] ?? true;
+        if (isEnabled) {
+          maxScore += employee.weights[key] ?? indicator.weight * 100;
+        }
       });
-      categoryScores[category] = Math.round(categoryScore * 100) / 100;
     });
-    return categoryScores;
+
+    if (employee.customIndicators) {
+      Object.values(employee.customIndicators).forEach((indicator) => {
+        maxScore += indicator.weight;
+      });
+    }
+
+    return maxScore;
   };
 
   // 处理员工数据输入
@@ -234,6 +225,23 @@ export default function Home() {
               weights: {
                 ...emp.weights,
                 [indicatorKey]: parseFloat(value) || 0,
+              },
+            }
+          : emp
+      )
+    );
+  };
+
+  // 切换指标启用状态
+  const toggleIndicatorEnabled = (employeeId: string, indicatorKey: string) => {
+    setEmployees(
+      employees.map((emp) =>
+        emp.id === employeeId
+          ? {
+              ...emp,
+              enabledIndicators: {
+                ...emp.enabledIndicators,
+                [indicatorKey]: !(emp.enabledIndicators?.[indicatorKey] ?? true),
               },
             }
           : emp
@@ -298,39 +306,6 @@ export default function Home() {
     );
   };
 
-  // 复制自定义考核项目
-  const copyCustomIndicators = (sourceId: string, targetIds: Set<string>) => {
-    const sourceEmployee = employees.find((e) => e.id === sourceId);
-    if (!sourceEmployee) return;
-
-    setEmployees(
-      employees.map((emp) => {
-        if (targetIds.has(emp.id) && emp.id !== sourceId) {
-          return {
-            ...emp,
-            customIndicators: { ...sourceEmployee.customIndicators },
-            weights: {
-              ...emp.weights,
-              ...Object.fromEntries(
-                Object.entries(sourceEmployee.customIndicators || {}).map(([key, indicator]) => [
-                  key,
-                  indicator.weight,
-                ])
-              ),
-            },
-            targets: {
-              ...emp.targets,
-              ...Object.fromEntries(
-                Object.entries(sourceEmployee.customIndicators || {}).map(([key]) => [key, null])
-              ),
-            },
-          };
-        }
-        return emp;
-      })
-    );
-  };
-
   // 批量复制权重或目标值
   const handleBatchCopy = () => {
     if (!batchMode || selectedEmployees.size === 0) return;
@@ -381,16 +356,18 @@ export default function Home() {
     const newId = String(Math.max(...employees.map(e => parseInt(e.id))) + 1);
     const targets: { [key: string]: number | null } = {};
     const weights: { [key: string]: number } = {};
+    const enabledIndicators: { [key: string]: boolean } = {};
     if (kpiStructure) {
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
           const key = `${category}_${indicator.name}`;
           targets[key] = indicator.target;
           weights[key] = indicator.weight * 100;
+          enabledIndicators[key] = true;
         });
       });
     }
-    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights, customIndicators: {} }]);
+    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights, customIndicators: {}, enabledIndicators }]);
   };
 
   // 删除员工
@@ -401,7 +378,91 @@ export default function Home() {
     }
   };
 
-  // 导出为 Excel
+  // 导出 Excel 模板
+  const exportTemplate = () => {
+    if (!kpiStructure) return;
+
+    const ws_data: any[] = [];
+    
+    // 表头
+    const headers = ['员工名称'];
+    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+      categoryData.指标.forEach((indicator) => {
+        headers.push(`${category}_${indicator.name}(实际值)`);
+      });
+    });
+    ws_data.push(headers);
+
+    // 员工行
+    employees.forEach((emp) => {
+      const row = [emp.name];
+      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+        categoryData.指标.forEach((indicator) => {
+          const key = `${category}_${indicator.name}`;
+          const isEnabled = emp.enabledIndicators?.[key] ?? true;
+          row.push(isEnabled ? '' : '(不考核)');
+        });
+      });
+      ws_data.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '数据填写');
+    XLSX.writeFile(wb, `KPI数据模板_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // 导入 Excel 数据
+  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !kpiStructure) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[];
+
+        if (jsonData.length < 2) {
+          alert('Excel 文件格式不正确');
+          return;
+        }
+
+        const headers = jsonData[0];
+        const updatedEmployees = employees.map((emp) => {
+          const rowIndex = jsonData.findIndex((row) => row[0] === emp.name);
+          if (rowIndex === -1) return emp;
+
+          const newEmp = { ...emp };
+          Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+            categoryData.指标.forEach((indicator, idx) => {
+              const key = `${category}_${indicator.name}`;
+              const headerIndex = headers.indexOf(`${category}_${indicator.name}(实际值)`);
+              if (headerIndex !== -1 && jsonData[rowIndex][headerIndex]) {
+                const value = jsonData[rowIndex][headerIndex];
+                if (value !== '(不考核)') {
+                  newEmp[key] = parseFloat(value) || 0;
+                }
+              }
+            });
+          });
+          return newEmp;
+        });
+
+        setEmployees(updatedEmployees);
+        alert('数据导入成功！');
+      } catch (error) {
+        console.error('Import error:', error);
+        alert('导入失败，请检查文件格式');
+      }
+    };
+    reader.readAsBinaryString(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 导出为 CSV
   const exportToExcel = () => {
     if (!kpiStructure) return;
 
@@ -457,43 +518,6 @@ export default function Home() {
     html2pdf().set(opt).from(element).save();
   };
 
-  // 准备员工饼状图数据
-  const preparePieData = (employeeId: string) => {
-    const categoryScores = getCategoryScores(employeeId);
-    return Object.entries(categoryScores).map(([name, value]) => ({
-      name,
-      value: Math.round(value * 100) / 100,
-    }));
-  };
-
-  // 准备业务线排名数据
-  const prepareCategoryRankingData = () => {
-    if (!selectedCategory || !kpiStructure) return [];
-    
-    return employees
-      .map((emp) => {
-        const categoryScores = getCategoryScores(emp.id);
-        const categoryData = kpiStructure[selectedCategory];
-        let categoryMaxScore = 0;
-        
-        categoryData.指标.forEach((indicator) => {
-          const key = `${selectedCategory}_${indicator.name}`;
-          const weight = emp.weights[key] ?? indicator.weight * 100;
-          categoryMaxScore += weight;
-        });
-
-        return {
-          name: emp.name,
-          score: categoryScores[selectedCategory] || 0,
-          maxScore: categoryMaxScore,
-          completion: categoryMaxScore > 0 ? ((categoryScores[selectedCategory] || 0) / categoryMaxScore) * 100 : 0,
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-  };
-
-  const COLORS = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#d946ef'];
-
   if (!kpiStructure) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -527,10 +551,27 @@ export default function Home() {
           <TabsContent value="data-input" className="space-y-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-foreground">员工 KPI 数据输入</h2>
-              <Button onClick={addEmployee} variant="outline" size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                添加员工
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={addEmployee} variant="outline" size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  添加员工
+                </Button>
+                <Button onClick={exportTemplate} variant="outline" size="sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  导出模板
+                </Button>
+                <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm">
+                  <Upload className="w-4 h-4 mr-2" />
+                  导入数据
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              </div>
             </div>
 
             {/* 批量操作面板 */}
@@ -662,6 +703,14 @@ export default function Home() {
                           </Button>
                         )}
                         <Button
+                          onClick={() => setManagingIndicators(managingIndicators === employee.id ? null : employee.id)}
+                          variant="outline"
+                          size="sm"
+                          title="管理考核项目"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                        <Button
                           onClick={() => setBatchMode({ sourceId: employee.id, type: 'weights' })}
                           variant="outline"
                           size="sm"
@@ -689,11 +738,43 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* 管理考核项目面板 */}
+                    {managingIndicators === employee.id && (
+                      <Card className="p-4 mb-6 bg-secondary/50 border-accent">
+                        <h4 className="font-semibold text-foreground mb-4">管理考核项目</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                            categoryData.指标.map((indicator) => {
+                              const key = `${category}_${indicator.name}`;
+                              const isEnabled = employee.enabledIndicators?.[key] ?? true;
+                              return (
+                                <div
+                                  key={key}
+                                  className="flex items-center gap-2 p-3 bg-background rounded border border-border"
+                                >
+                                  <Checkbox
+                                    checked={isEnabled}
+                                    onCheckedChange={() => toggleIndicatorEnabled(employee.id, key)}
+                                  />
+                                  <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
+                                    {indicator.name}
+                                  </label>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </Card>
+                    )}
+
                     {/* 指标输入网格 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                       {Object.entries(kpiStructure).map(([category, categoryData]) =>
                         categoryData.指标.map((indicator) => {
                           const key = `${category}_${indicator.name}`;
+                          const isEnabled = employee.enabledIndicators?.[key] ?? true;
+                          if (!isEnabled) return null;
+
                           const actual = parseFloat(String(employee[key] || 0));
                           const kpi = getEmployeeKPI(employee.id);
                           const score = kpi[key]?.score || 0;
@@ -1041,33 +1122,6 @@ export default function Home() {
                     })}
                 </tbody>
               </table>
-
-              {/* 业务线分布 */}
-              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '15px' }}>
-                员工业务线得分分布
-              </h2>
-              {employees.map((emp) => (
-                <div key={emp.id} style={{ marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
-                    {emp.name}
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {Object.entries(getCategoryScores(emp.id)).map(([category, score]) => (
-                        <tr
-                          key={category}
-                          style={{ borderBottom: '1px solid #eee', backgroundColor: '#f9f9f9' }}
-                        >
-                          <td style={{ padding: '8px' }}>{category}</td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            {(score as number).toFixed(2)} 分
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
             </div>
 
             {/* 排名（带进度条） */}
@@ -1106,8 +1160,6 @@ export default function Home() {
                   })}
               </div>
             </Card>
-
-
           </TabsContent>
         </Tabs>
       </div>
