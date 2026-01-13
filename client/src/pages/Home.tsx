@@ -945,15 +945,37 @@ export default function Home() {
                                 </div>
                               )}
 
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-muted-foreground">
-                                  {target !== null && target !== 0
-                                    ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
-                                    : '无目标'}
-                                </span>
-                                <span className="text-sm font-bold text-accent">
-                                  得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
-                                </span>
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-muted-foreground">实际值: {actual}</span>
+                                  <span className="text-muted-foreground">目标值: {target !== null && target !== undefined ? target : '不考核'}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs mb-2">
+                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
+                                  <span className="text-muted-foreground">
+                                    {target !== null && target !== 0
+                                      ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
+                                      : '无目标'}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-background rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className="h-full bg-accent transition-all duration-300"
+                                    style={{
+                                      width: target !== null && target !== 0
+                                        ? Math.min(((actual / target) * 100), 100) + '%'
+                                        : '0%',
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-medium text-foreground">
+                                    得分: {score.toFixed(2)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    / {weightPercentage.toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1043,15 +1065,37 @@ export default function Home() {
                                 </div>
                               )}
 
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-muted-foreground">
-                                  {target !== null && target !== 0
-                                    ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
-                                    : '无目标'}
-                                </span>
-                                <span className="text-sm font-bold text-accent">
-                                  得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
-                                </span>
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                  <span className="text-muted-foreground">实际值: {actual}</span>
+                                  <span className="text-muted-foreground">目标值: {target !== null && target !== undefined ? target : '不考核'}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs mb-2">
+                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
+                                  <span className="text-muted-foreground">
+                                    {target !== null && target !== 0
+                                      ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
+                                      : '无目标'}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-background rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className="h-full bg-accent transition-all duration-300"
+                                    style={{
+                                      width: target !== null && target !== 0
+                                        ? Math.min(((actual / target) * 100), 100) + '%'
+                                        : '0%',
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs font-medium text-foreground">
+                                    得分: {score.toFixed(2)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    / {weightPercentage.toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1174,31 +1218,42 @@ export default function Home() {
                     {getAllIndicators().find((i) => i.key === selectedIndicatorForRanking)?.name} - 员工排名
                   </h4>
                   <div className="space-y-2">
-                    {getIndicatorRanking(selectedIndicatorForRanking).map((item, index) => (
-                      <div
-                        key={item.employeeId}
-                        className="flex items-center justify-between p-3 bg-secondary rounded border border-border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
-                          <span className="text-foreground font-medium">{item.employeeName}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-sm text-muted-foreground">完成度</div>
-                            <div className="text-lg font-bold text-accent">
-                              {item.completionRate.toFixed(1)}%
+                                        {getIndicatorRanking(selectedIndicatorForRanking).map((item, index) => {
+                      const employee = employees.find(e => e.id === item.employeeId);
+                      const indicatorKey = selectedIndicatorForRanking;
+                      const actualValue = employee ? parseFloat(String(employee[indicatorKey] || 0)) : 0;
+                      const targetValue = employee?.targets[indicatorKey];
+                      return (
+                        <div
+                          key={item.employeeId}
+                          className="flex items-center justify-between p-4 bg-secondary rounded border border-border"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
+                            <div>
+                              <div className="text-foreground font-medium">{item.employeeName}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                实际值: {actualValue} | 目标值: {targetValue !== null && targetValue !== undefined ? targetValue : '不考核'}
+                              </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm text-muted-foreground">得分</div>
-                            <div className="text-lg font-bold text-accent">
-                              {item.score.toFixed(2)}
+                          <div className="flex items-center gap-6">
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">完成度</div>
+                              <div className="text-lg font-bold text-accent">
+                                {item.completionRate.toFixed(1)}%
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-muted-foreground">得分</div>
+                              <div className="text-lg font-bold text-accent">
+                                {item.score.toFixed(2)}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
