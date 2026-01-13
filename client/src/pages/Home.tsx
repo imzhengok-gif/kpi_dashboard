@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2 } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings } from 'lucide-react';
 
 interface KPIIndicator {
   name: string;
@@ -23,8 +23,9 @@ interface KPIStructure {
 interface EmployeeData {
   id: string;
   name: string;
-  targets: { [key: string]: number | null }; // 员工独立的目标值
-  [key: string]: string | number | { [key: string]: number | null };
+  targets: { [key: string]: number | null };
+  weights: { [key: string]: number }; // 员工独立的权重
+  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number };
 }
 
 interface EmployeeKPI {
@@ -37,22 +38,20 @@ interface EmployeeKPI {
 
 export default function Home() {
   const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
-  const [weights, setWeights] = useState<{ [key: string]: { [key: string]: number } }>({});
   const [employees, setEmployees] = useState<EmployeeData[]>([
-    { id: '1', name: '员工1', targets: {} },
-    { id: '2', name: '员工2', targets: {} },
-    { id: '3', name: '员工3', targets: {} },
-    { id: '4', name: '员工4', targets: {} },
-    { id: '5', name: '员工5', targets: {} },
-    { id: '6', name: '员工6', targets: {} },
-    { id: '7', name: '员工7', targets: {} },
-    { id: '8', name: '员工8', targets: {} },
-    { id: '9', name: '员工9', targets: {} },
-    { id: '10', name: '员工10', targets: {} },
-    { id: '11', name: '员工11', targets: {} },
+    { id: '1', name: '员工1', targets: {}, weights: {} },
+    { id: '2', name: '员工2', targets: {}, weights: {} },
+    { id: '3', name: '员工3', targets: {}, weights: {} },
+    { id: '4', name: '员工4', targets: {}, weights: {} },
+    { id: '5', name: '员工5', targets: {}, weights: {} },
+    { id: '6', name: '员工6', targets: {}, weights: {} },
+    { id: '7', name: '员工7', targets: {}, weights: {} },
+    { id: '8', name: '员工8', targets: {}, weights: {} },
+    { id: '9', name: '员工9', targets: {}, weights: {} },
+    { id: '10', name: '员工10', targets: {}, weights: {} },
+    { id: '11', name: '员工11', targets: {}, weights: {} },
   ]);
-  const [editingWeights, setEditingWeights] = useState(false);
-  const [editingTargets, setEditingTargets] = useState<string | null>(null);
+  const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
 
   useEffect(() => {
     const fetchKPIStructure = async () => {
@@ -61,28 +60,19 @@ export default function Home() {
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
 
-        // 初始化权重（转换为百分比）
-        const initialWeights: { [key: string]: { [key: string]: number } } = {};
-        Object.entries(data).forEach(([category, categoryData]) => {
-          initialWeights[category] = {};
-          categoryData.指标.forEach((indicator) => {
-            const key = indicator.name;
-            initialWeights[category][key] = indicator.weight * 100;
-          });
-        });
-        setWeights(initialWeights);
-
-        // 初始化员工的目标值
+        // 初始化员工的目标值和权重
         setEmployees((prevEmployees) =>
           prevEmployees.map((emp) => {
             const targets: { [key: string]: number | null } = {};
+            const weights: { [key: string]: number } = {};
             Object.entries(data).forEach(([category, categoryData]) => {
               categoryData.指标.forEach((indicator) => {
                 const key = `${category}_${indicator.name}`;
                 targets[key] = indicator.target;
+                weights[key] = indicator.weight * 100; // 转换为百分比
               });
             });
-            return { ...emp, targets };
+            return { ...emp, targets, weights };
           })
         );
       } catch (error) {
@@ -95,11 +85,9 @@ export default function Home() {
 
   // 计算 KPI 得分
   const calculateKPI = (actual: number, target: number | null, weightPercentage: number) => {
-    // 如果目标值为空，实际值直接作为得分（不超过权重分）
     if (target === null || target === 0) {
       return Math.min(actual, weightPercentage);
     }
-    // 否则按完成率计算
     const completion = actual / target;
     const score = Math.min(completion * weightPercentage, weightPercentage);
     return Math.round(score * 100) / 100;
@@ -118,7 +106,7 @@ export default function Home() {
         const key = `${category}_${indicator.name}`;
         const actual = parseFloat(String(employee[key] || 0));
         const target = employee.targets[key] ?? indicator.target;
-        const weightPercentage = weights[category]?.[indicator.name] || indicator.weight * 100;
+        const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
         kpi[key] = {
           actual,
           score: calculateKPI(actual, target, weightPercentage),
@@ -136,11 +124,11 @@ export default function Home() {
     return Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
   };
 
-  // 获取总满分
-  const getTotalMaxScore = () => {
-    return Object.values(weights)
-      .flatMap((cat) => Object.values(cat))
-      .reduce((sum, w) => sum + w, 0);
+  // 获取员工的总满分
+  const getEmployeeTotalMaxScore = (employeeId: string) => {
+    const employee = employees.find((e) => e.id === employeeId);
+    if (!employee) return 0;
+    return Object.values(employee.weights).reduce((sum, w) => sum + w, 0);
   };
 
   // 处理员工数据输入
@@ -176,19 +164,38 @@ export default function Home() {
     );
   };
 
+  // 处理员工权重变更
+  const handleEmployeeWeightChange = (employeeId: string, indicatorKey: string, value: string) => {
+    setEmployees(
+      employees.map((emp) =>
+        emp.id === employeeId
+          ? {
+              ...emp,
+              weights: {
+                ...emp.weights,
+                [indicatorKey]: parseFloat(value) || 0,
+              },
+            }
+          : emp
+      )
+    );
+  };
+
   // 添加员工
   const addEmployee = () => {
     const newId = String(Math.max(...employees.map(e => parseInt(e.id))) + 1);
     const targets: { [key: string]: number | null } = {};
+    const weights: { [key: string]: number } = {};
     if (kpiStructure) {
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
           const key = `${category}_${indicator.name}`;
           targets[key] = indicator.target;
+          weights[key] = indicator.weight * 100;
         });
       });
     }
-    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets }]);
+    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights }]);
   };
 
   // 删除员工
@@ -196,18 +203,6 @@ export default function Home() {
     if (employees.length > 1) {
       setEmployees(employees.filter((emp) => emp.id !== employeeId));
     }
-  };
-
-  // 处理权重变更（百分比形式）
-  const handleWeightChange = (category: string, indicatorName: string, value: string) => {
-    const newWeight = parseFloat(value) || 0;
-    setWeights({
-      ...weights,
-      [category]: {
-        ...weights[category],
-        [indicatorName]: newWeight,
-      },
-    });
   };
 
   // 导出为 Excel
@@ -218,7 +213,7 @@ export default function Home() {
 
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
       categoryData.指标.forEach((indicator) => {
-        csv += `,${category}_${indicator.name}(实际),${category}_${indicator.name}(目标),${category}_${indicator.name}(得分)`;
+        csv += `,${category}_${indicator.name}(实际),${category}_${indicator.name}(目标),${category}_${indicator.name}(权重%),${category}_${indicator.name}(得分)`;
       });
     });
     csv += ',总分\n';
@@ -231,8 +226,9 @@ export default function Home() {
           const key = `${category}_${indicator.name}`;
           const actual = kpi[key]?.actual || 0;
           const target = kpi[key]?.target ?? '';
+          const weight = employee.weights[key] ?? 0;
           const score = kpi[key]?.score || 0;
-          csv += `,${actual},${target},${score}`;
+          csv += `,${actual},${target},${weight},${score}`;
         });
       });
       csv += `,${getEmployeeTotalScore(employee.id)}\n`;
@@ -260,8 +256,6 @@ export default function Home() {
     );
   }
 
-  const totalMaxScore = getTotalMaxScore();
-
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -275,9 +269,8 @@ export default function Home() {
       {/* Main Content */}
       <div className="container py-12">
         <Tabs defaultValue="data-input" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-2 mb-8">
             <TabsTrigger value="data-input">数据输入</TabsTrigger>
-            <TabsTrigger value="weight-config">权重配置</TabsTrigger>
             <TabsTrigger value="results">结果统计</TabsTrigger>
           </TabsList>
 
@@ -292,131 +285,182 @@ export default function Home() {
             </div>
 
             <div className="space-y-6">
-              {employees.map((employee) => (
-                <Card key={employee.id} className="p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">
-                        员工名称
-                      </label>
-                      <Input
-                        value={employee.name}
-                        onChange={(e) => handleEmployeeNameChange(employee.id, e.target.value)}
-                        className="max-w-xs"
-                      />
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">总分</div>
-                      <div className="text-3xl font-bold text-primary">
-                        {getEmployeeTotalScore(employee.id).toFixed(2)}
+              {employees.map((employee) => {
+                const totalScore = getEmployeeTotalScore(employee.id);
+                const totalMaxScore = getEmployeeTotalMaxScore(employee.id);
+
+                return (
+                  <Card key={employee.id} className="p-6">
+                    <div className="flex justify-between items-center mb-6">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">
+                          员工名称
+                        </label>
+                        <Input
+                          value={employee.name}
+                          onChange={(e) => handleEmployeeNameChange(employee.id, e.target.value)}
+                          className="max-w-xs"
+                        />
                       </div>
-                      <div className="text-xs text-muted-foreground">/ {totalMaxScore.toFixed(2)}</div>
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">总分</div>
+                        <div className="text-3xl font-bold text-primary">
+                          {totalScore.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">/ {totalMaxScore.toFixed(2)}</div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
+                          <Button
+                            onClick={() => setEditingMode(null)}
+                            variant="default"
+                            size="sm"
+                          >
+                            完成
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => setEditingMode({ employeeId: employee.id, mode: 'targets' })}
+                            variant="outline"
+                            size="sm"
+                            title="编辑目标值"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
+                          <Button
+                            onClick={() => setEditingMode(null)}
+                            variant="default"
+                            size="sm"
+                          >
+                            完成
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => setEditingMode({ employeeId: employee.id, mode: 'weights' })}
+                            variant="outline"
+                            size="sm"
+                            title="编辑权重"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {employees.length > 1 && (
+                          <Button
+                            onClick={() => removeEmployee(employee.id)}
+                            variant="ghost"
+                            size="sm"
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2 ml-4">
-                      {editingTargets === employee.id ? (
-                        <Button
-                          onClick={() => setEditingTargets(null)}
-                          variant="default"
-                          size="sm"
-                        >
-                          完成
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={() => setEditingTargets(employee.id)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                      {employees.length > 1 && (
-                        <Button
-                          onClick={() => removeEmployee(employee.id)}
-                          variant="ghost"
-                          size="sm"
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* 指标输入网格 */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Object.entries(kpiStructure).map(([category, categoryData]) =>
-                      categoryData.指标.map((indicator) => {
-                        const key = `${category}_${indicator.name}`;
-                        const actual = parseFloat(String(employee[key] || 0));
-                        const kpi = getEmployeeKPI(employee.id);
-                        const score = kpi[key]?.score || 0;
-                        const target = kpi[key]?.target;
-                        const weightPercentage = weights[category]?.[indicator.name] || indicator.weight * 100;
+                    {/* 指标输入网格 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.entries(kpiStructure).map(([category, categoryData]) =>
+                        categoryData.指标.map((indicator) => {
+                          const key = `${category}_${indicator.name}`;
+                          const actual = parseFloat(String(employee[key] || 0));
+                          const kpi = getEmployeeKPI(employee.id);
+                          const score = kpi[key]?.score || 0;
+                          const target = kpi[key]?.target;
+                          const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
 
-                        return (
-                          <div key={key} className="bg-secondary p-4 rounded-lg">
-                            <label className="block text-sm font-medium text-foreground mb-2">
-                              {indicator.name}
-                            </label>
-                            <div className="flex gap-2 mb-2">
-                              <Input
-                                type="number"
-                                placeholder="实际值"
-                                value={actual || ''}
-                                onChange={(e) =>
-                                  handleEmployeeDataChange(employee.id, key, e.target.value)
-                                }
-                                className="flex-1"
-                              />
-                              <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
-                                {indicator.unit}
-                              </span>
-                            </div>
+                          return (
+                            <div key={key} className="bg-secondary p-4 rounded-lg">
+                              <label className="block text-sm font-medium text-foreground mb-2">
+                                {indicator.name}
+                              </label>
+                              <div className="flex gap-2 mb-2">
+                                <Input
+                                  type="number"
+                                  placeholder="实际值"
+                                  value={actual || ''}
+                                  onChange={(e) =>
+                                    handleEmployeeDataChange(employee.id, key, e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                                <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
+                                  {indicator.unit}
+                                </span>
+                              </div>
 
-                            {/* 目标值编辑 */}
-                            {editingTargets === employee.id ? (
-                              <div className="mb-2">
-                                <label className="text-xs text-muted-foreground mb-1 block">
-                                  目标值
-                                </label>
-                                <div className="flex gap-2">
-                                  <Input
-                                    type="number"
-                                    placeholder="留空表示不考核"
-                                    value={target ?? ''}
-                                    onChange={(e) =>
-                                      handleEmployeeTargetChange(employee.id, key, e.target.value)
-                                    }
-                                    className="flex-1 text-xs"
-                                  />
-                                  <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-                                    {indicator.unit}
-                                  </span>
+                              {/* 目标值编辑 */}
+                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
+                                <div className="mb-2">
+                                  <label className="text-xs text-muted-foreground mb-1 block">
+                                    目标值
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      placeholder="留空表示不考核"
+                                      value={target ?? ''}
+                                      onChange={(e) =>
+                                        handleEmployeeTargetChange(employee.id, key, e.target.value)
+                                      }
+                                      className="flex-1 text-xs"
+                                    />
+                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
+                                      {indicator.unit}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="text-xs text-muted-foreground mb-1">
-                                目标: {target !== null && target !== undefined ? `${target} ${indicator.unit}` : '不考核'}
-                              </div>
-                            )}
+                              ) : (
+                                <div className="text-xs text-muted-foreground mb-1">
+                                  目标: {target !== null && target !== undefined ? `${target} ${indicator.unit}` : '不考核'}
+                                </div>
+                              )}
 
-                            <div className="flex justify-between items-center">
-                              <span className="text-xs text-muted-foreground">
-                                {target !== null && target !== 0
-                                  ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
-                                  : '无目标'}
-                              </span>
-                              <span className="text-sm font-bold text-accent">
-                                得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
-                              </span>
+                              {/* 权重编辑 */}
+                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
+                                <div className="mb-2">
+                                  <label className="text-xs text-muted-foreground mb-1 block">
+                                    权重占比
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      value={weightPercentage}
+                                      onChange={(e) =>
+                                        handleEmployeeWeightChange(employee.id, key, e.target.value)
+                                      }
+                                      className="flex-1 text-xs"
+                                    />
+                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground mb-1">
+                                  权重: {weightPercentage.toFixed(2)}%
+                                </div>
+                              )}
+
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs text-muted-foreground">
+                                  {target !== null && target !== 0
+                                    ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
+                                    : '无目标'}
+                                </span>
+                                <span className="text-sm font-bold text-accent">
+                                  得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </Card>
-              ))}
+                          );
+                        })
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
 
             <div className="flex gap-4 justify-end">
@@ -427,91 +471,6 @@ export default function Home() {
             </div>
           </TabsContent>
 
-          {/* 权重配置标签页 */}
-          <TabsContent value="weight-config" className="space-y-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-foreground">权重配置（全局）</h2>
-              {!editingWeights ? (
-                <Button onClick={() => setEditingWeights(true)} variant="outline">
-                  编辑权重
-                </Button>
-              ) : (
-                <Button onClick={() => setEditingWeights(false)} variant="default">
-                  完成编辑
-                </Button>
-              )}
-            </div>
-
-            <div className="space-y-8">
-              {Object.entries(kpiStructure).map(([category, categoryData]) => {
-                const categoryTotal = Object.values(weights[category] || {}).reduce(
-                  (sum, w) => sum + w,
-                  0
-                );
-
-                return (
-                  <Card key={category} className="p-6">
-                    <h3 className="text-xl font-bold text-foreground mb-4">{category}</h3>
-                    <div className="space-y-4">
-                      {categoryData.指标.map((indicator) => {
-                        const weight = weights[category]?.[indicator.name] || indicator.weight * 100;
-
-                        return (
-                          <div key={indicator.name} className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <label className="block text-sm font-medium text-foreground">
-                                {indicator.name}
-                              </label>
-                              <p className="text-xs text-muted-foreground">
-                                默认目标: {indicator.target !== null && indicator.target !== 0 ? `${indicator.target} ${indicator.unit}` : '不考核'}
-                              </p>
-                            </div>
-                            {editingWeights ? (
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="number"
-                                  step="0.1"
-                                  value={weight}
-                                  onChange={(e) =>
-                                    handleWeightChange(category, indicator.name, e.target.value)
-                                  }
-                                  className="w-24"
-                                />
-                                <span className="text-sm text-muted-foreground">%</span>
-                              </div>
-                            ) : (
-                              <div className="text-right">
-                                <div className="text-lg font-bold text-primary">{weight.toFixed(2)}%</div>
-                                <p className="text-xs text-muted-foreground">权重占比</p>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-foreground">分类总权重</span>
-                        <span className={`text-lg font-bold ${categoryTotal > 100 ? 'text-destructive' : 'text-primary'}`}>
-                          {categoryTotal.toFixed(2)}%
-                        </span>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-
-            <Card className="p-6 bg-secondary">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-bold text-foreground">全部权重总和（总满分）</span>
-                <span className="text-2xl font-bold text-primary">
-                  {totalMaxScore.toFixed(2)} 分
-                </span>
-              </div>
-            </Card>
-          </TabsContent>
-
           {/* 结果统计标签页 */}
           <TabsContent value="results" className="space-y-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">KPI 成绩统计</h2>
@@ -519,7 +478,8 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee.id);
-                const completionRate = (totalScore / totalMaxScore) * 100;
+                const totalMaxScore = getEmployeeTotalMaxScore(employee.id);
+                const completionRate = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
 
                 return (
                   <Card key={employee.id} className="p-6 border-l-4 border-l-primary">
