@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   PieChart,
@@ -18,12 +18,15 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
+import html2pdf from 'html2pdf.js';
 
 interface KPIIndicator {
   name: string;
   target: number | null;
   weight: number;
   unit: string;
+  id?: string;
+  isCustom?: boolean;
 }
 
 interface KPICategory {
@@ -39,7 +42,8 @@ interface EmployeeData {
   name: string;
   targets: { [key: string]: number | null };
   weights: { [key: string]: number };
-  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number };
+  customIndicators?: { [key: string]: KPIIndicator };
+  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | undefined;
 }
 
 interface EmployeeKPI {
@@ -53,23 +57,25 @@ interface EmployeeKPI {
 export default function Home() {
   const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
   const [employees, setEmployees] = useState<EmployeeData[]>([
-    { id: '1', name: '员工1', targets: {}, weights: {} },
-    { id: '2', name: '员工2', targets: {}, weights: {} },
-    { id: '3', name: '员工3', targets: {}, weights: {} },
-    { id: '4', name: '员工4', targets: {}, weights: {} },
-    { id: '5', name: '员工5', targets: {}, weights: {} },
-    { id: '6', name: '员工6', targets: {}, weights: {} },
-    { id: '7', name: '员工7', targets: {}, weights: {} },
-    { id: '8', name: '员工8', targets: {}, weights: {} },
-    { id: '9', name: '员工9', targets: {}, weights: {} },
-    { id: '10', name: '员工10', targets: {}, weights: {} },
-    { id: '11', name: '员工11', targets: {}, weights: {} },
+    { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {} },
+    { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {} },
+    { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {} },
+    { id: '4', name: '员工4', targets: {}, weights: {}, customIndicators: {} },
+    { id: '5', name: '员工5', targets: {}, weights: {}, customIndicators: {} },
+    { id: '6', name: '员工6', targets: {}, weights: {}, customIndicators: {} },
+    { id: '7', name: '员工7', targets: {}, weights: {}, customIndicators: {} },
+    { id: '8', name: '员工8', targets: {}, weights: {}, customIndicators: {} },
+    { id: '9', name: '员工9', targets: {}, weights: {}, customIndicators: {} },
+    { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {} },
+    { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {} },
   ]);
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
   const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [copySuccess, setCopySuccess] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [addingCustom, setAddingCustom] = useState<{ employeeId: string; name: string; unit: string; weight: number } | null>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchKPIStructure = async () => {
@@ -91,7 +97,7 @@ export default function Home() {
                 weights[key] = indicator.weight * 100;
               });
             });
-            return { ...emp, targets, weights };
+            return { ...emp, targets, weights, customIndicators: {} };
           })
         );
       } catch (error) {
@@ -134,6 +140,20 @@ export default function Home() {
       });
     });
 
+    // 添加自定义指标
+    if (employee.customIndicators) {
+      Object.entries(employee.customIndicators).forEach(([key, indicator]) => {
+        const actual = parseFloat(String(employee[key] || 0));
+        const target = employee.targets[key] ?? indicator.target;
+        const weightPercentage = employee.weights[key] ?? indicator.weight;
+        kpi[key] = {
+          actual,
+          score: calculateKPI(actual, target, weightPercentage),
+          target,
+        };
+      });
+    }
+
     return kpi;
   };
 
@@ -169,23 +189,6 @@ export default function Home() {
       categoryScores[category] = Math.round(categoryScore * 100) / 100;
     });
     return categoryScores;
-  };
-
-  // 获取业务线总满分
-  const getCategoryMaxScore = (category: string) => {
-    if (!kpiStructure) return 0;
-    const categoryData = kpiStructure[category];
-    if (!categoryData) return 0;
-    
-    let maxScore = 0;
-    employees.forEach((emp) => {
-      categoryData.指标.forEach((indicator) => {
-        const key = `${category}_${indicator.name}`;
-        const weight = emp.weights[key] ?? indicator.weight * 100;
-        maxScore = Math.max(maxScore, weight);
-      });
-    });
-    return maxScore;
   };
 
   // 处理员工数据输入
@@ -235,6 +238,96 @@ export default function Home() {
             }
           : emp
       )
+    );
+  };
+
+  // 添加自定义考核项目
+  const addCustomIndicator = (employeeId: string) => {
+    if (!addingCustom || !addingCustom.name) return;
+
+    const customKey = `custom_${Date.now()}`;
+    setEmployees(
+      employees.map((emp) =>
+        emp.id === employeeId
+          ? {
+              ...emp,
+              customIndicators: {
+                ...emp.customIndicators,
+                [customKey]: {
+                  name: addingCustom.name,
+                  unit: addingCustom.unit,
+                  weight: addingCustom.weight,
+                  target: null,
+                  isCustom: true,
+                },
+              },
+              weights: {
+                ...emp.weights,
+                [customKey]: addingCustom.weight,
+              },
+              targets: {
+                ...emp.targets,
+                [customKey]: null,
+              },
+            }
+          : emp
+      )
+    );
+    setAddingCustom(null);
+  };
+
+  // 删除自定义考核项目
+  const removeCustomIndicator = (employeeId: string, indicatorKey: string) => {
+    setEmployees(
+      employees.map((emp) =>
+        emp.id === employeeId
+          ? {
+              ...emp,
+              customIndicators: Object.fromEntries(
+                Object.entries(emp.customIndicators || {}).filter(([key]) => key !== indicatorKey)
+              ),
+              weights: Object.fromEntries(
+                Object.entries(emp.weights).filter(([key]) => key !== indicatorKey)
+              ),
+              targets: Object.fromEntries(
+                Object.entries(emp.targets).filter(([key]) => key !== indicatorKey)
+              ),
+            }
+          : emp
+      )
+    );
+  };
+
+  // 复制自定义考核项目
+  const copyCustomIndicators = (sourceId: string, targetIds: Set<string>) => {
+    const sourceEmployee = employees.find((e) => e.id === sourceId);
+    if (!sourceEmployee) return;
+
+    setEmployees(
+      employees.map((emp) => {
+        if (targetIds.has(emp.id) && emp.id !== sourceId) {
+          return {
+            ...emp,
+            customIndicators: { ...sourceEmployee.customIndicators },
+            weights: {
+              ...emp.weights,
+              ...Object.fromEntries(
+                Object.entries(sourceEmployee.customIndicators || {}).map(([key, indicator]) => [
+                  key,
+                  indicator.weight,
+                ])
+              ),
+            },
+            targets: {
+              ...emp.targets,
+              ...Object.fromEntries(
+                Object.entries(sourceEmployee.customIndicators || {}).map(([key]) => [key, null])
+              ),
+            },
+          };
+        }
+        return emp;
+      })
     );
   };
 
@@ -297,7 +390,7 @@ export default function Home() {
         });
       });
     }
-    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights }]);
+    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights, customIndicators: {} }]);
   };
 
   // 删除员工
@@ -346,6 +439,22 @@ export default function Home() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // 导出为 PDF
+  const exportToPDF = () => {
+    if (!pdfRef.current) return;
+
+    const element = pdfRef.current;
+    const opt = {
+      margin: 10,
+      filename: `KPI报告_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'png' as const, quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { orientation: 'portrait' as const, unit: 'mm', format: 'a4' },
+    };
+
+    html2pdf().set(opt).from(element).save();
   };
 
   // 准备员工饼状图数据
@@ -581,7 +690,7 @@ export default function Home() {
                     </div>
 
                     {/* 指标输入网格 */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                       {Object.entries(kpiStructure).map(([category, categoryData]) =>
                         categoryData.指标.map((indicator) => {
                           const key = `${category}_${indicator.name}`;
@@ -679,6 +788,177 @@ export default function Home() {
                           );
                         })
                       )}
+
+                      {/* 自定义考核项目 */}
+                      {employee.customIndicators &&
+                        Object.entries(employee.customIndicators).map(([key, indicator]) => {
+                          const actual = parseFloat(String(employee[key] || 0));
+                          const kpi = getEmployeeKPI(employee.id);
+                          const score = kpi[key]?.score || 0;
+                          const target = kpi[key]?.target;
+                          const weightPercentage = employee.weights[key] ?? indicator.weight;
+
+                          return (
+                            <div key={key} className="bg-secondary p-4 rounded-lg border-2 border-accent">
+                              <div className="flex justify-between items-start mb-2">
+                                <label className="block text-sm font-medium text-foreground">
+                                  {indicator.name} <span className="text-xs text-accent">(自定义)</span>
+                                </label>
+                                <Button
+                                  onClick={() => removeCustomIndicator(employee.id, key)}
+                                  variant="ghost"
+                                  size="sm"
+                                >
+                                  <X className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
+                              <div className="flex gap-2 mb-2">
+                                <Input
+                                  type="number"
+                                  placeholder="实际值"
+                                  value={actual || ''}
+                                  onChange={(e) =>
+                                    handleEmployeeDataChange(employee.id, key, e.target.value)
+                                  }
+                                  className="flex-1"
+                                />
+                                <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
+                                  {indicator.unit}
+                                </span>
+                              </div>
+
+                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
+                                <div className="mb-2">
+                                  <label className="text-xs text-muted-foreground mb-1 block">
+                                    目标值
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      placeholder="留空表示不考核"
+                                      value={target ?? ''}
+                                      onChange={(e) =>
+                                        handleEmployeeTargetChange(employee.id, key, e.target.value)
+                                      }
+                                      className="flex-1 text-xs"
+                                    />
+                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
+                                      {indicator.unit}
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground mb-1">
+                                  目标: {target !== null && target !== undefined ? `${target} ${indicator.unit}` : '不考核'}
+                                </div>
+                              )}
+
+                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
+                                <div className="mb-2">
+                                  <label className="text-xs text-muted-foreground mb-1 block">
+                                    权重占比
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      step="0.1"
+                                      value={weightPercentage}
+                                      onChange={(e) =>
+                                        handleEmployeeWeightChange(employee.id, key, e.target.value)
+                                      }
+                                      className="flex-1 text-xs"
+                                    />
+                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-muted-foreground mb-1">
+                                  权重: {weightPercentage.toFixed(2)}%
+                                </div>
+                              )}
+
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs text-muted-foreground">
+                                  {target !== null && target !== 0
+                                    ? `完成度: ${((actual / target) * 100).toFixed(1)}%`
+                                    : '无目标'}
+                                </span>
+                                <span className="text-sm font-bold text-accent">
+                                  得分: {score.toFixed(2)} / {weightPercentage.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* 添加自定义考核项目 */}
+                    <div className="border-t border-border pt-4">
+                      {addingCustom?.employeeId === employee.id ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <Input
+                              placeholder="项目名称"
+                              value={addingCustom.name}
+                              onChange={(e) =>
+                                setAddingCustom({ ...addingCustom, name: e.target.value })
+                              }
+                            />
+                            <Input
+                              placeholder="单位"
+                              value={addingCustom.unit}
+                              onChange={(e) =>
+                                setAddingCustom({ ...addingCustom, unit: e.target.value })
+                              }
+                            />
+                            <Input
+                              type="number"
+                              placeholder="权重占比 %"
+                              value={addingCustom.weight}
+                              onChange={(e) =>
+                                setAddingCustom({
+                                  ...addingCustom,
+                                  weight: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => addCustomIndicator(employee.id)}
+                                variant="default"
+                                size="sm"
+                              >
+                                添加
+                              </Button>
+                              <Button
+                                onClick={() => setAddingCustom(null)}
+                                variant="outline"
+                                size="sm"
+                              >
+                                取消
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          onClick={() =>
+                            setAddingCustom({
+                              employeeId: employee.id,
+                              name: '',
+                              unit: '',
+                              weight: 0,
+                            })
+                          }
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          添加考核项目
+                        </Button>
+                      )}
                     </div>
                   </Card>
                 );
@@ -695,7 +975,100 @@ export default function Home() {
 
           {/* 结果统计标签页 */}
           <TabsContent value="results" className="space-y-6">
-            <h2 className="text-2xl font-bold text-foreground mb-6">KPI 成绩统计</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-foreground">KPI 成绩统计</h2>
+              <Button onClick={exportToPDF} className="gap-2">
+                <Download className="w-4 h-4" />
+                导出 PDF 报告
+              </Button>
+            </div>
+
+            {/* PDF 导出内容 */}
+            <div ref={pdfRef} className="bg-white p-8 hidden" style={{ color: '#000' }}>
+              <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>
+                KPI 成绩统计报告
+              </h1>
+              <p style={{ marginBottom: '30px', color: '#666' }}>
+                生成时间: {new Date().toLocaleString()}
+              </p>
+
+              {/* 排名 */}
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '15px' }}>
+                员工排名
+              </h2>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #ddd' }}>
+                    <th style={{ padding: '10px', textAlign: 'left' }}>排名</th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}>员工名称</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>得分</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>满分</th>
+                    <th style={{ padding: '10px', textAlign: 'right' }}>完成度</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees
+                    .map((emp) => ({
+                      ...emp,
+                      score: getEmployeeTotalScore(emp.id),
+                      maxScore: getEmployeeTotalMaxScore(emp.id),
+                    }))
+                    .sort((a, b) => b.score - a.score)
+                    .map((emp, index) => {
+                      const percentage =
+                        emp.maxScore > 0 ? (emp.score / emp.maxScore) * 100 : 0;
+                      return (
+                        <tr
+                          key={emp.id}
+                          style={{
+                            borderBottom: '1px solid #eee',
+                            backgroundColor: index % 2 === 0 ? '#f9f9f9' : '#fff',
+                          }}
+                        >
+                          <td style={{ padding: '10px' }}>{index + 1}</td>
+                          <td style={{ padding: '10px' }}>{emp.name}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>
+                            {emp.score.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>
+                            {emp.maxScore.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>
+                            {percentage.toFixed(1)}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+
+              {/* 业务线分布 */}
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '15px' }}>
+                员工业务线得分分布
+              </h2>
+              {employees.map((emp) => (
+                <div key={emp.id} style={{ marginBottom: '20px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>
+                    {emp.name}
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {Object.entries(getCategoryScores(emp.id)).map(([category, score]) => (
+                        <tr
+                          key={category}
+                          style={{ borderBottom: '1px solid #eee', backgroundColor: '#f9f9f9' }}
+                        >
+                          <td style={{ padding: '8px' }}>{category}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
+                            {(score as number).toFixed(2)} 分
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
 
             {/* 排名（带进度条） */}
             <Card className="p-6">
