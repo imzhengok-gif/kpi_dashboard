@@ -3,7 +3,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface KPIIndicator {
   name: string;
@@ -24,7 +25,7 @@ interface EmployeeData {
   id: string;
   name: string;
   targets: { [key: string]: number | null };
-  weights: { [key: string]: number }; // 员工独立的权重
+  weights: { [key: string]: number };
   [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number };
 }
 
@@ -52,6 +53,9 @@ export default function Home() {
     { id: '11', name: '员工11', targets: {}, weights: {} },
   ]);
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
+  const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
+  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+  const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
     const fetchKPIStructure = async () => {
@@ -60,7 +64,6 @@ export default function Home() {
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
 
-        // 初始化员工的目标值和权重
         setEmployees((prevEmployees) =>
           prevEmployees.map((emp) => {
             const targets: { [key: string]: number | null } = {};
@@ -69,7 +72,7 @@ export default function Home() {
               categoryData.指标.forEach((indicator) => {
                 const key = `${category}_${indicator.name}`;
                 targets[key] = indicator.target;
-                weights[key] = indicator.weight * 100; // 转换为百分比
+                weights[key] = indicator.weight * 100;
               });
             });
             return { ...emp, targets, weights };
@@ -181,6 +184,51 @@ export default function Home() {
     );
   };
 
+  // 批量复制权重或目标值
+  const handleBatchCopy = () => {
+    if (!batchMode || selectedEmployees.size === 0) return;
+
+    const sourceEmployee = employees.find((e) => e.id === batchMode.sourceId);
+    if (!sourceEmployee) return;
+
+    setEmployees(
+      employees.map((emp) => {
+        if (selectedEmployees.has(emp.id) && emp.id !== batchMode.sourceId) {
+          if (batchMode.type === 'weights') {
+            return {
+              ...emp,
+              weights: { ...sourceEmployee.weights },
+            };
+          } else {
+            return {
+              ...emp,
+              targets: { ...sourceEmployee.targets },
+            };
+          }
+        }
+        return emp;
+      })
+    );
+
+    setCopySuccess(true);
+    setTimeout(() => {
+      setCopySuccess(false);
+      setBatchMode(null);
+      setSelectedEmployees(new Set());
+    }, 2000);
+  };
+
+  // 切换员工选择
+  const toggleEmployeeSelection = (employeeId: string) => {
+    const newSelected = new Set(selectedEmployees);
+    if (newSelected.has(employeeId)) {
+      newSelected.delete(employeeId);
+    } else {
+      newSelected.add(employeeId);
+    }
+    setSelectedEmployees(newSelected);
+  };
+
   // 添加员工
   const addEmployee = () => {
     const newId = String(Math.max(...employees.map(e => parseInt(e.id))) + 1);
@@ -202,6 +250,7 @@ export default function Home() {
   const removeEmployee = (employeeId: string) => {
     if (employees.length > 1) {
       setEmployees(employees.filter((emp) => emp.id !== employeeId));
+      selectedEmployees.delete(employeeId);
     }
   };
 
@@ -284,6 +333,72 @@ export default function Home() {
               </Button>
             </div>
 
+            {/* 批量操作面板 */}
+            {batchMode && (
+              <Card className="p-6 bg-accent/10 border-accent">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-lg font-bold text-foreground mb-2">
+                        批量复制{batchMode.type === 'weights' ? '权重' : '目标值'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        从 <span className="font-semibold">{employees.find(e => e.id === batchMode.sourceId)?.name}</span> 复制{batchMode.type === 'weights' ? '权重' : '目标值'}到选定的员工
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        setBatchMode(null);
+                        setSelectedEmployees(new Set());
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
+                      取消
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {employees.map((emp) => (
+                      <div
+                        key={emp.id}
+                        className="flex items-center gap-2 p-3 bg-background rounded border border-border"
+                      >
+                        <Checkbox
+                          checked={selectedEmployees.has(emp.id)}
+                          onCheckedChange={() => toggleEmployeeSelection(emp.id)}
+                          disabled={emp.id === batchMode.sourceId}
+                        />
+                        <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
+                          {emp.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      onClick={handleBatchCopy}
+                      disabled={selectedEmployees.size === 0}
+                      className="gap-2"
+                    >
+                      {copySuccess ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          已复制
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          复制到 {selectedEmployees.size} 人
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             <div className="space-y-6">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee.id);
@@ -346,6 +461,22 @@ export default function Home() {
                             <Settings className="w-4 h-4" />
                           </Button>
                         )}
+                        <Button
+                          onClick={() => setBatchMode({ sourceId: employee.id, type: 'weights' })}
+                          variant="outline"
+                          size="sm"
+                          title="批量复制权重"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          onClick={() => setBatchMode({ sourceId: employee.id, type: 'targets' })}
+                          variant="outline"
+                          size="sm"
+                          title="批量复制目标值"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
                         {employees.length > 1 && (
                           <Button
                             onClick={() => removeEmployee(employee.id)}
