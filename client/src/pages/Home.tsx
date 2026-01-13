@@ -883,7 +883,7 @@ export default function Home() {
                               <div className="flex gap-2 mb-2">
                                 <Input
                                   type="number"
-                                  step="0.01"
+                                  step="any"
                                   placeholder="实际值"
                                   value={actual || ''}
                                   onChange={(e) =>
@@ -902,7 +902,7 @@ export default function Home() {
                                   <div className="flex gap-2">
                                     <Input
                                       type="number"
-                                      step="0.01"
+                                      step="any"
                                       placeholder="留空表示不考核"
                                       value={target ?? ''}
                                       onChange={(e) =>
@@ -988,7 +988,7 @@ export default function Home() {
                               <div className="flex gap-2 mb-2">
                                 <Input
                                   type="number"
-                                  step="0.01"
+                                  step="any"
                                   placeholder="实际值"
                                   value={actual || ''}
                                   onChange={(e) =>
@@ -1009,7 +1009,7 @@ export default function Home() {
                                   <div className="flex gap-2">
                                     <Input
                                       type="number"
-                                      step="0.01"
+                                      step="any"
                                       placeholder="留空表示不考核"
                                       value={target ?? ''}
                                       onChange={(e) =>
