@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -708,7 +708,7 @@ export default function Home() {
                           size="sm"
                           title="管理考核项目"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <List className="w-4 h-4" />
                         </Button>
                         <Button
                           onClick={() => setBatchMode({ sourceId: employee.id, type: 'weights' })}
@@ -880,10 +880,10 @@ export default function Home() {
                           const weightPercentage = employee.weights[key] ?? indicator.weight;
 
                           return (
-                            <div key={key} className="bg-secondary p-4 rounded-lg border-2 border-accent">
+                            <div key={key} className="bg-secondary p-4 rounded-lg">
                               <div className="flex justify-between items-start mb-2">
                                 <label className="block text-sm font-medium text-foreground">
-                                  {indicator.name} <span className="text-xs text-accent">(自定义)</span>
+                                  {indicator.name}
                                 </label>
                                 <Button
                                   onClick={() => removeCustomIndicator(employee.id, key)}
