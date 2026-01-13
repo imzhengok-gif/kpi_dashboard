@@ -442,6 +442,40 @@ export default function Home() {
   };
 
   // 导出 Excel 模板
+  // 保存数据为 CSV
+  const saveData = () => {
+    if (!kpiStructure) return;
+
+    const ws_data: any[] = [];
+    
+    // 表头
+    const headers = ['员工名称'];
+    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+      categoryData.指标.forEach((indicator) => {
+        headers.push(`${category}_${indicator.name}(实际值)`);
+      });
+    });
+    ws_data.push(headers);
+
+    // 员工行 - 填充实际数据
+    employees.forEach((emp) => {
+      const row = [emp.name];
+      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
+        categoryData.指标.forEach((indicator) => {
+          const key = `${category}_${indicator.name}`;
+          const actual = emp[key] !== null && emp[key] !== undefined ? String(emp[key]) : '';
+          row.push(actual);
+        });
+      });
+      ws_data.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '数据保存');
+    XLSX.writeFile(wb, `KPI数据_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const exportTemplate = () => {
     if (!kpiStructure) return;
 
@@ -623,6 +657,10 @@ export default function Home() {
                 <Button onClick={exportTemplate} variant="outline" size="sm">
                   <Download className="w-4 h-4 mr-2" />
                   导出模板
+                </Button>
+                <Button onClick={saveData} variant="outline" size="sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  保存数据
                 </Button>
                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm">
                   <Upload className="w-4 h-4 mr-2" />
