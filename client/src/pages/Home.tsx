@@ -32,7 +32,7 @@ interface EmployeeData {
   weights: { [key: string]: number };
   customIndicators?: { [key: string]: KPIIndicator };
   enabledIndicators?: { [key: string]: boolean };
-  [key: string]: string | number | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | { [key: string]: boolean } | undefined;
+  [key: string]: string | number | null | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | { [key: string]: boolean } | undefined;
 }
 
 interface EmployeeKPI {
@@ -244,10 +244,10 @@ export default function Home() {
 
   // 处理员工数据输入
   const handleEmployeeDataChange = (employeeId: string, key: string, value: string) => {
-    const numValue = value === '' ? 0 : parseFloat(value);
+    const numValue = value === '' ? null : parseFloat(value);
     setEmployees(
       employees.map((emp) =>
-        emp.id === employeeId ? { ...emp, [key]: isNaN(numValue) ? 0 : numValue } : emp
+        emp.id === employeeId ? { ...emp, [key]: isNaN(numValue as number) ? null : numValue } : emp
       )
     );
   };
@@ -886,7 +886,7 @@ export default function Home() {
                                   type="number"
                                   step="any"
                                   placeholder="实际值"
-                                  value={actual === 0 ? '0' : actual || ''}
+                                  value={actual !== null && actual !== undefined ? actual : ''}
                                   onChange={(e) =>
                                     handleEmployeeDataChange(employee.id, key, e.target.value)
                                   }
@@ -990,7 +990,7 @@ export default function Home() {
                                   type="number"
                                   step="any"
                                   placeholder="实际值"
-                                  value={actual === 0 ? '0' : actual || ''}
+                                  value={actual !== null && actual !== undefined ? actual : ''}
                                   onChange={(e) =>
                                     handleEmployeeDataChange(employee.id, key, e.target.value)
                                   }
