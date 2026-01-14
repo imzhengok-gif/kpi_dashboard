@@ -63,6 +63,7 @@ const getInitialEmployees = (): EmployeeData[] => {
 export default function Home() {
   const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
   const [employees, setEmployees] = useState<EmployeeData[]>(getInitialEmployees());
+  const [isLoaded, setIsLoaded] = useState(false);
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
   const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
@@ -102,9 +103,13 @@ export default function Home() {
         if (data.success && data.data) {
           console.log('✅ Loaded employees from file');
           setEmployees(data.data);
+          setIsLoaded(true);
+        } else {
+          setIsLoaded(true);
         }
       } catch (error) {
         console.error('Failed to load employees:', error);
+        setIsLoaded(true);
       }
     };
     loadEmployees();
@@ -117,11 +122,14 @@ export default function Home() {
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
 
-        // 只在首次加载且没有保存数据时初始化
-        const saved = localStorage.getItem('kpi_employees');
-        if (!saved) {
+        // 只在已加载文件数据后，才初始化权重和目标值
+        if (isLoaded) {
           setEmployees((prevEmployees) =>
             prevEmployees.map((emp) => {
+              // 如果已经有权重，说明是从文件加载的，不需要初始化
+              if (Object.keys(emp.weights).length > 0) {
+                return emp;
+              }
               const targets: { [key: string]: number | null } = {};
               const weights: { [key: string]: number } = {};
               const enabledIndicators: { [key: string]: boolean } = {};
@@ -143,7 +151,7 @@ export default function Home() {
     };
 
     fetchKPIStructure();
-  }, []);
+  }, [isLoaded]);
 
   // 计算 KPI 得分
   const calculateKPI = (actual: number, target: number | null, weightPercentage: number) => {
