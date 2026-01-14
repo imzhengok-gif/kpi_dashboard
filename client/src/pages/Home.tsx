@@ -43,7 +43,43 @@ interface EmployeeKPI {
   };
 }
 
+// LocalStorage 工具函数
+const STORAGE_KEY = 'kpi_dashboard_employees';
+const STORAGE_VERSION = '1.0';
+
+const saveToLocalStorage = (data: EmployeeData[]) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    console.log('✅ Data saved to LocalStorage');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to save to LocalStorage:', error);
+    return false;
+  }
+};
+
+const loadFromLocalStorage = (): EmployeeData[] | null => {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      console.log('✅ Data loaded from LocalStorage');
+      return parsed;
+    }
+  } catch (error) {
+    console.error('❌ Failed to load from LocalStorage:', error);
+  }
+  return null;
+};
+
 const getInitialEmployees = (): EmployeeData[] => {
+  // 首先尝试从LocalStorage加载
+  const savedData = loadFromLocalStorage();
+  if (savedData && savedData.length > 0) {
+    return savedData;
+  }
+  
+  // 如果没有保存的数据，使用默认数据
   return [
     { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
@@ -75,10 +111,14 @@ export default function Home() {
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 保存员工数据到本地文件（立即保存）
+    // 自动保存员工数据到LocalStorage和后端
   useEffect(() => {
-    if (employees.length === 0) return;
+    if (employees.length === 0 || !isLoaded) return;
     
+    // 1. 首先保存到LocalStorage（最重要，最稳定）
+    const localSaveSuccess = saveToLocalStorage(employees);
+    
+    // 2. 同时尝试保存到后端（作为备份）
     fetch('/api/employees/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -87,25 +127,36 @@ export default function Home() {
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          console.log('✅ Auto-saved to file');
+          console.log('✅ Auto-saved to backend');
         }
       })
-      .catch(err => console.error('❌ Auto-save error:', err));
-  }, [employees]);
+      .catch(err => console.error('⚠️ Backend auto-save failed (data still saved locally):', err));
+  }, [employees, isLoaded]);
 
-  // 加载员工数据
+  // 加载员工数据（优先从LocalStorage，然后从后端）
   useEffect(() => {
     const loadEmployees = async () => {
       try {
+        // 1. 首先尝试从LocalStorage加载（最快，最稳定）
+        const localData = loadFromLocalStorage();
+        if (localData && localData.length > 0) {
+          setEmployees(localData);
+          setIsLoaded(true);
+          console.log('✅ Loaded from LocalStorage');
+          return;
+        }
+        
+        // 2. 如果LocalStorage没有数据，尝试从后端加载
+        console.log('LocalStorage empty, trying backend...');
         const res = await fetch('/api/employees/load');
         const data = await res.json();
-        if (data.success && data.data) {
-          console.log('✅ Loaded employees from file');
+        if (data.success && data.data && data.data.length > 0) {
+          console.log('✅ Loaded from backend');
           setEmployees(data.data);
-          setIsLoaded(true);
-        } else {
-          setIsLoaded(true);
+          // 同时保存到LocalStorage
+          saveToLocalStorage(data.data);
         }
+        setIsLoaded(true);
       } catch (error) {
         console.error('Failed to load employees:', error);
         setIsLoaded(true);
@@ -540,6 +591,10 @@ export default function Home() {
   };
   // 保存数据到文件
   const saveToFile = () => {
+    // 1. 首先保存到LocalStorage
+    const localSaveSuccess = saveToLocalStorage(employees);
+    
+    // 2. 同时尝试保存到后端
     fetch('/api/employees/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -548,14 +603,23 @@ export default function Home() {
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          alert('✅ 数据已保存到文件！');
-          console.log('✅ Data saved to file');
+          alert('✅ 数据已保存到本地和服务器！');
+          console.log('✅ Data saved to both LocalStorage and backend');
         } else {
-          alert('❌ 保存失败：' + data.error);
+          if (localSaveSuccess) {
+            alert('✅ 数据已保存到本地！（服务器保存失败，但本地数据已保存）');
+          } else {
+            alert('❌ 保存失败：' + data.error);
+          }
         }
       })
       .catch(err => {
-        alert('❌ 保存失败：' + err.message);
+        if (localSaveSuccess) {
+          alert('✅ 数据已保存到本地！（服务器连接失败，但本地数据已保存）');
+          console.log('⚠️ Backend save failed but LocalStorage save succeeded');
+        } else {
+          alert('❌ 保存失败：' + err.message);
+        }
         console.error('Save error:', err);
       });
   };
@@ -656,7 +720,9 @@ export default function Home() {
         // 完全替换员工列表
         if (newEmployees.length > 0) {
           setEmployees(newEmployees);
-          alert(`✅ 数据导入成功！已导入 ${newEmployees.length} 名员工的数据`);
+          // 立即保存到LocalStorage
+          saveToLocalStorage(newEmployees);
+          alert(`✅ 数据导入成功！已导入 ${newEmployees.length} 名员工的数据（已自动保存）`);
         } else {
           alert('❌ 未找到有效的员工数据');
         }
