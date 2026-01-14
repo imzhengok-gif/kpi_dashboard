@@ -528,6 +528,27 @@ export default function Home() {
     XLSX.utils.book_append_sheet(wb, ws, '数据保存');
     XLSX.writeFile(wb, `KPI数据_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
+  // 保存数据到文件
+  const saveToFile = () => {
+    fetch('/api/employees/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(employees),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert('✅ 数据已保存到文件！');
+          console.log('✅ Data saved to file');
+        } else {
+          alert('❌ 保存失败：' + data.error);
+        }
+      })
+      .catch(err => {
+        alert('❌ 保存失败：' + err.message);
+        console.error('Save error:', err);
+      });
+  };
 
   const exportTemplate = () => {
     if (!kpiStructure) return;
@@ -713,6 +734,10 @@ export default function Home() {
                 </Button>
                 <Button onClick={saveData} variant="outline" size="sm">
                   <Download className="w-4 h-4 mr-2" />
+                  导出Excel
+                </Button>
+                <Button onClick={saveToFile} variant="default" size="sm">
+                  <Save className="w-4 h-4 mr-2" />
                   保存数据
                 </Button>
                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm">
