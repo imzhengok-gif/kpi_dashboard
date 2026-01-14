@@ -44,7 +44,7 @@ interface EmployeeKPI {
 }
 
 const getInitialEmployees = (): EmployeeData[] => {
-  const defaultEmployees: EmployeeData[] = [
+  return [
     { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
@@ -57,13 +57,7 @@ const getInitialEmployees = (): EmployeeData[] => {
     { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
   ];
-  try {
-    const saved = localStorage.getItem('kpi_employees');
-    if (saved) return JSON.parse(saved);
-  } catch (e) {
-    console.error('Failed to load from localStorage:', e);
-  }
-  return defaultEmployees;
+
 };
 
 export default function Home() {
@@ -80,18 +74,41 @@ export default function Home() {
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 保存员工数据到 localStorage（带防抖）
+  // 保存员工数据到本地文件（带防抖）
   useEffect(() => {
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem('kpi_employees', JSON.stringify(employees));
-        console.log('✅ Data saved to localStorage');
-      } catch (error) {
-        console.error('❌ Failed to save:', error);
-      }
-    }, 500);
+      fetch('/api/employees/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employees),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            console.log('✅ Data saved to file');
+          }
+        })
+        .catch(err => console.error('❌ Save error:', err));
+    }, 1000);
     return () => clearTimeout(timer);
   }, [employees]);
+
+  // 加载员工数据
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        const res = await fetch('/api/employees/load');
+        const data = await res.json();
+        if (data.success && data.data) {
+          console.log('✅ Loaded employees from file');
+          setEmployees(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to load employees:', error);
+      }
+    };
+    loadEmployees();
+  }, []);
 
   useEffect(() => {
     const fetchKPIStructure = async () => {
