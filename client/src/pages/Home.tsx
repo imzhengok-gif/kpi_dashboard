@@ -591,37 +591,17 @@ export default function Home() {
   };
   // 保存数据到文件
   const saveToFile = () => {
-    // 1. 首先保存到LocalStorage
+    // 保存到LocalStorage
     const localSaveSuccess = saveToLocalStorage(employees);
     
-    // 2. 同时尝试保存到后端
-    fetch('/api/employees/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(employees),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          alert('✅ 数据已保存到本地和服务器！');
-          console.log('✅ Data saved to both LocalStorage and backend');
-        } else {
-          if (localSaveSuccess) {
-            alert('✅ 数据已保存到本地！（服务器保存失败，但本地数据已保存）');
-          } else {
-            alert('❌ 保存失败：' + data.error);
-          }
-        }
-      })
-      .catch(err => {
-        if (localSaveSuccess) {
-          alert('✅ 数据已保存到本地！（服务器连接失败，但本地数据已保存）');
-          console.log('⚠️ Backend save failed but LocalStorage save succeeded');
-        } else {
-          alert('❌ 保存失败：' + err.message);
-        }
-        console.error('Save error:', err);
-      });
+    // 显示提示框
+    if (localSaveSuccess) {
+      alert('✅ 数据保存成功！');
+      console.log('✅ Data saved successfully');
+    } else {
+      alert('❌ 数据保存失败！');
+      console.error('Save failed');
+    }
   };
 
 
@@ -795,7 +775,7 @@ export default function Home() {
                 </Button>
                 <Button onClick={saveData} variant="outline" size="sm">
                   <Download className="w-4 h-4 mr-2" />
-                  导出Excel
+                  导出数据
                 </Button>
                 <Button onClick={saveToFile} variant="default" size="sm">
                   <Save className="w-4 h-4 mr-2" />
