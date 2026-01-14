@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List, Save } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 import * as XLSX from 'xlsx';
@@ -493,38 +493,49 @@ export default function Home() {
     }
   };
 
-  // 导出 Excel 模板
-  // 保存数据为 CSV
+  // 导出为 Excel
   const saveData = () => {
     if (!kpiStructure) return;
 
     const ws_data: any[] = [];
     
-    // 表头
+    // 表头：员工名称 + 各指标(实际值、目标值、权重%、得分)
     const headers = ['员工名称'];
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
       categoryData.指标.forEach((indicator) => {
-        headers.push(`${category}_${indicator.name}(实际值)`);
+        headers.push(`${category}_${indicator.name}(实际)`);
+        headers.push(`${category}_${indicator.name}(目标)`);
+        headers.push(`${category}_${indicator.name}(权重%)`);
+        headers.push(`${category}_${indicator.name}(得分)`);
       });
     });
+    headers.push('总分');
     ws_data.push(headers);
 
-    // 员工行 - 填充实际数据
+    // 员工行 - 填充完整数据
     employees.forEach((emp) => {
-      const row = [emp.name];
+      const row: any[] = [emp.name];
+      const kpi = getEmployeeKPI(emp.id);
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
           const key = `${category}_${indicator.name}`;
-          const actual = emp[key] !== null && emp[key] !== undefined ? String(emp[key]) : '';
+          const actual = kpi[key]?.actual || 0;
+          const target = kpi[key]?.target ?? '';
+          const weight = emp.weights[key] ?? 0;
+          const score = kpi[key]?.score || 0;
           row.push(actual);
+          row.push(target);
+          row.push(weight);
+          row.push(score);
         });
       });
+      row.push(getEmployeeTotalScore(emp.id));
       ws_data.push(row);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(ws_data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '数据保存');
+    XLSX.utils.book_append_sheet(wb, ws, 'KPI数据');
     XLSX.writeFile(wb, `KPI数据_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
   // 保存数据到文件
@@ -549,40 +560,9 @@ export default function Home() {
       });
   };
 
-  const exportTemplate = () => {
-    if (!kpiStructure) return;
 
-    const ws_data: any[] = [];
-    
-    // 表头
-    const headers = ['员工名称'];
-    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      categoryData.指标.forEach((indicator) => {
-        headers.push(`${category}_${indicator.name}(实际值)`);
-      });
-    });
-    ws_data.push(headers);
 
-    // 员工行
-    employees.forEach((emp) => {
-      const row = [emp.name];
-      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-        categoryData.指标.forEach((indicator) => {
-          const key = `${category}_${indicator.name}`;
-          const isEnabled = emp.enabledIndicators?.[key] ?? true;
-          row.push(isEnabled ? '' : '(不考核)');
-        });
-      });
-      ws_data.push(row);
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(ws_data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '数据填写');
-    XLSX.writeFile(wb, `KPI数据模板_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  // 导入 Excel 数据
+  // 导入 Excel 数据 - 完全替换现有数据
   const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !kpiStructure) return;
@@ -601,53 +581,88 @@ export default function Home() {
         }
 
         const headers = jsonData[0];
-        const updatedEmployees = employees.map((emp) => {
-          const rowIndex = jsonData.findIndex((row) => row[0] === emp.name);
-          if (rowIndex === -1) return emp;
-
-          const newEmp = { ...emp };
+        // 完全替换现有数据
+        const newEmployees: EmployeeData[] = [];
+        
+        // 从Excel中读取所有员工数据
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          const employeeName = row[0];
+          if (!employeeName) continue;
+          
+          // 查找或创建员工
+          let employee = employees.find(e => e.name === employeeName);
+          if (!employee) {
+            const newId = String(Math.max(...employees.map(e => parseInt(e.id)), 0) + newEmployees.length + 1);
+            employee = {
+              id: newId,
+              name: employeeName,
+              targets: {},
+              weights: {},
+              customIndicators: {},
+              enabledIndicators: {}
+            };
+          } else {
+            // 重置员工数据
+            employee = {
+              ...employee,
+              targets: {},
+              weights: {},
+              customIndicators: {},
+              enabledIndicators: {}
+            };
+          }
+          
+          // 填充指标数据
           Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-            categoryData.指标.forEach((indicator, idx) => {
+            categoryData.指标.forEach((indicator) => {
               const key = `${category}_${indicator.name}`;
               
               // 导入实际值
-              const actualHeaderIndex = headers.indexOf(`${category}_${indicator.name}(实际值)`);
-              if (actualHeaderIndex !== -1 && jsonData[rowIndex][actualHeaderIndex]) {
-                const value = jsonData[rowIndex][actualHeaderIndex];
+              const actualHeaderIndex = headers.indexOf(`${category}_${indicator.name}(实际)`);
+              if (actualHeaderIndex !== -1 && row[actualHeaderIndex]) {
+                const value = row[actualHeaderIndex];
                 if (value !== '(不考核)' && value !== '') {
-                  newEmp[key] = parseFloat(value) || null;
+                  employee[key] = parseFloat(value) || null;
                 }
               }
               
               // 导入目标值
-              const targetHeaderIndex = headers.indexOf(`${category}_${indicator.name}(目标值)`);
-              if (targetHeaderIndex !== -1 && jsonData[rowIndex][targetHeaderIndex]) {
-                const value = jsonData[rowIndex][targetHeaderIndex];
+              const targetHeaderIndex = headers.indexOf(`${category}_${indicator.name}(目标)`);
+              if (targetHeaderIndex !== -1 && row[targetHeaderIndex]) {
+                const value = row[targetHeaderIndex];
                 if (value !== '' && value !== undefined) {
-                  if (!newEmp.targets) newEmp.targets = {};
-                  newEmp.targets[key] = parseFloat(value) || null;
+                  employee.targets[key] = parseFloat(value) || null;
                 }
               }
               
               // 导入权重
               const weightHeaderIndex = headers.indexOf(`${category}_${indicator.name}(权重%)`);
-              if (weightHeaderIndex !== -1 && jsonData[rowIndex][weightHeaderIndex]) {
-                const value = jsonData[rowIndex][weightHeaderIndex];
+              if (weightHeaderIndex !== -1 && row[weightHeaderIndex]) {
+                const value = row[weightHeaderIndex];
                 if (value !== '' && value !== undefined) {
-                  if (!newEmp.weights) newEmp.weights = {};
-                  newEmp.weights[key] = parseFloat(value) || 0;
+                  employee.weights[key] = parseFloat(value) || 0;
                 }
               }
+              
+              // 设置启用状态
+              employee.enabledIndicators![key] = true;
             });
           });
-          return newEmp;
-        });
-
-        setEmployees(updatedEmployees);
-        alert('数据导入成功！');
+          
+          newEmployees.push(employee);
+        }
+        
+        // 完全替换员工列表
+        if (newEmployees.length > 0) {
+          setEmployees(newEmployees);
+          alert(`✅ 数据导入成功！已导入 ${newEmployees.length} 名员工的数据`);
+        } else {
+          alert('❌ 未找到有效的员工数据');
+        }
       } catch (error) {
         console.error('Import error:', error);
-        alert('导入失败，请检查文件格式');
+        alert('❌ 导入失败，请检查文件格式');
       }
     };
     reader.readAsBinaryString(file);
@@ -655,44 +670,7 @@ export default function Home() {
   };
 
   // 导出为 CSV
-  const exportToExcel = () => {
-    if (!kpiStructure) return;
 
-    let csv = '员工名称';
-
-    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      categoryData.指标.forEach((indicator) => {
-        csv += `,${category}_${indicator.name}(实际),${category}_${indicator.name}(目标),${category}_${indicator.name}(权重%),${category}_${indicator.name}(得分)`;
-      });
-    });
-    csv += ',总分\n';
-
-    employees.forEach((employee) => {
-      csv += employee.name;
-      const kpi = getEmployeeKPI(employee.id);
-      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-        categoryData.指标.forEach((indicator) => {
-          const key = `${category}_${indicator.name}`;
-          const actual = kpi[key]?.actual || 0;
-          const target = kpi[key]?.target ?? '';
-          const weight = employee.weights[key] ?? 0;
-          const score = kpi[key]?.score || 0;
-          csv += `,${actual},${target},${weight},${score}`;
-        });
-      });
-      csv += `,${getEmployeeTotalScore(employee.id)}\n`;
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `KPI计算结果_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // 导出为 PDF
   const exportToPDF = () => {
@@ -748,10 +726,6 @@ export default function Home() {
                 <Button onClick={addEmployee} variant="outline" size="sm">
                   <Plus className="w-4 h-4 mr-2" />
                   添加员工
-                </Button>
-                <Button onClick={exportTemplate} variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  导出模板
                 </Button>
                 <Button onClick={saveData} variant="outline" size="sm">
                   <Download className="w-4 h-4 mr-2" />
@@ -1295,12 +1269,7 @@ export default function Home() {
               })}
             </div>
 
-            <div className="flex gap-4 justify-end">
-              <Button onClick={exportToExcel} className="gap-2">
-                <Download className="w-4 h-4" />
-                导出为 CSV
-              </Button>
-            </div>
+
           </TabsContent>
 
           {/* 结果统计标签页 */}
