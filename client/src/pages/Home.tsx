@@ -43,9 +43,8 @@ interface EmployeeKPI {
   };
 }
 
-export default function Home() {
-  const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
-  const [employees, setEmployees] = useState<EmployeeData[]>([
+const getInitialEmployees = (): EmployeeData[] => {
+  const defaultEmployees: EmployeeData[] = [
     { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
@@ -57,7 +56,19 @@ export default function Home() {
     { id: '9', name: '员工9', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
     { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-  ]);
+  ];
+  try {
+    const saved = localStorage.getItem('kpi_employees');
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    console.error('Failed to load from localStorage:', e);
+  }
+  return defaultEmployees;
+};
+
+export default function Home() {
+  const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
+  const [employees, setEmployees] = useState<EmployeeData[]>(getInitialEmployees());
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
   const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
@@ -69,6 +80,15 @@ export default function Home() {
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 保存员工数据到 localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('kpi_employees', JSON.stringify(employees));
+    } catch (error) {
+      console.error('Failed to save to localStorage:', error);
+    }
+  }, [employees]);
+
   useEffect(() => {
     const fetchKPIStructure = async () => {
       try {
@@ -76,22 +96,26 @@ export default function Home() {
         const data: KPIStructure = await response.json();
         setKpiStructure(data);
 
-        setEmployees((prevEmployees) =>
-          prevEmployees.map((emp) => {
-            const targets: { [key: string]: number | null } = {};
-            const weights: { [key: string]: number } = {};
-            const enabledIndicators: { [key: string]: boolean } = {};
-            Object.entries(data).forEach(([category, categoryData]) => {
-              categoryData.指标.forEach((indicator) => {
-                const key = `${category}_${indicator.name}`;
-                targets[key] = indicator.target;
-                weights[key] = indicator.weight * 100;
-                enabledIndicators[key] = true;
+        // 只在首次加载且没有保存数据时初始化
+        const saved = localStorage.getItem('kpi_employees');
+        if (!saved) {
+          setEmployees((prevEmployees) =>
+            prevEmployees.map((emp) => {
+              const targets: { [key: string]: number | null } = {};
+              const weights: { [key: string]: number } = {};
+              const enabledIndicators: { [key: string]: boolean } = {};
+              Object.entries(data).forEach(([category, categoryData]) => {
+                categoryData.指标.forEach((indicator) => {
+                  const key = `${category}_${indicator.name}`;
+                  targets[key] = indicator.target;
+                  weights[key] = indicator.weight * 100;
+                  enabledIndicators[key] = true;
+                });
               });
-            });
-            return { ...emp, targets, weights, customIndicators: {}, enabledIndicators };
-          })
-        );
+              return { ...emp, targets, weights, customIndicators: {}, enabledIndicators };
+            })
+          );
+        }
       } catch (error) {
         console.error('Failed to load KPI structure:', error);
       }
