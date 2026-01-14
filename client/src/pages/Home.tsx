@@ -75,23 +75,22 @@ export default function Home() {
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 保存员工数据到本地文件（带防抖）
+  // 保存员工数据到本地文件（立即保存）
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetch('/api/employees/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(employees),
+    if (employees.length === 0) return;
+    
+    fetch('/api/employees/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(employees),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          console.log('✅ Auto-saved to file');
+        }
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            console.log('✅ Data saved to file');
-          }
-        })
-        .catch(err => console.error('❌ Save error:', err));
-    }, 1000);
-    return () => clearTimeout(timer);
+      .catch(err => console.error('❌ Auto-save error:', err));
   }, [employees]);
 
   // 加载员工数据
@@ -610,11 +609,33 @@ export default function Home() {
           Object.entries(kpiStructure).forEach(([category, categoryData]) => {
             categoryData.指标.forEach((indicator, idx) => {
               const key = `${category}_${indicator.name}`;
-              const headerIndex = headers.indexOf(`${category}_${indicator.name}(实际值)`);
-              if (headerIndex !== -1 && jsonData[rowIndex][headerIndex]) {
-                const value = jsonData[rowIndex][headerIndex];
-                if (value !== '(不考核)') {
-                  newEmp[key] = parseFloat(value) || 0;
+              
+              // 导入实际值
+              const actualHeaderIndex = headers.indexOf(`${category}_${indicator.name}(实际值)`);
+              if (actualHeaderIndex !== -1 && jsonData[rowIndex][actualHeaderIndex]) {
+                const value = jsonData[rowIndex][actualHeaderIndex];
+                if (value !== '(不考核)' && value !== '') {
+                  newEmp[key] = parseFloat(value) || null;
+                }
+              }
+              
+              // 导入目标值
+              const targetHeaderIndex = headers.indexOf(`${category}_${indicator.name}(目标值)`);
+              if (targetHeaderIndex !== -1 && jsonData[rowIndex][targetHeaderIndex]) {
+                const value = jsonData[rowIndex][targetHeaderIndex];
+                if (value !== '' && value !== undefined) {
+                  if (!newEmp.targets) newEmp.targets = {};
+                  newEmp.targets[key] = parseFloat(value) || null;
+                }
+              }
+              
+              // 导入权重
+              const weightHeaderIndex = headers.indexOf(`${category}_${indicator.name}(权重%)`);
+              if (weightHeaderIndex !== -1 && jsonData[rowIndex][weightHeaderIndex]) {
+                const value = jsonData[rowIndex][weightHeaderIndex];
+                if (value !== '' && value !== undefined) {
+                  if (!newEmp.weights) newEmp.weights = {};
+                  newEmp.weights[key] = parseFloat(value) || 0;
                 }
               }
             });
