@@ -80,13 +80,17 @@ export default function Home() {
   const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 保存员工数据到 localStorage
+  // 保存员工数据到 localStorage（带防抖）
   useEffect(() => {
-    try {
-      localStorage.setItem('kpi_employees', JSON.stringify(employees));
-    } catch (error) {
-      console.error('Failed to save to localStorage:', error);
-    }
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('kpi_employees', JSON.stringify(employees));
+        console.log('✅ Data saved to localStorage');
+      } catch (error) {
+        console.error('❌ Failed to save:', error);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
   }, [employees]);
 
   useEffect(() => {
