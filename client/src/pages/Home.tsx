@@ -336,7 +336,7 @@ export default function Home() {
           employeeName: employee.name,
           score: indicatorData.score,
           completionRate: indicatorData.target && indicatorData.target !== 0
-            ? (indicatorData.actual / indicatorData.target) * 100
+            ? Math.max(0, (indicatorData.actual / indicatorData.target) * 100)
             : 0,
         };
       })
@@ -1124,7 +1124,7 @@ export default function Home() {
                                     className="h-full bg-accent transition-all duration-300"
                                     style={{
                                       width: target !== null && target !== 0
-                                        ? Math.min(((actual / target) * 100), 100) + '%'
+                                        ? Math.max(0, Math.min(((actual / target) * 100), 100)) + '%'
                                         : '0%',
                                     }}
                                   />
@@ -1135,7 +1135,7 @@ export default function Home() {
                                   </span>
                                   <span className="text-muted-foreground">
                                     {target !== null && target !== 0
-                                      ? `${((actual / target) * 100).toFixed(0)}%`
+                                      ? `${Math.max(0, (actual / target) * 100).toFixed(0)}%`
                                       : '—'}
                                   </span>
                                 </div>
@@ -1240,7 +1240,7 @@ export default function Home() {
                                     className="h-full bg-accent transition-all duration-300"
                                     style={{
                                       width: target !== null && target !== 0
-                                        ? Math.min(((actual / target) * 100), 100) + '%'
+                                        ? Math.max(0, Math.min(((actual / target) * 100), 100)) + '%'
                                         : '0%',
                                     }}
                                   />
@@ -1251,7 +1251,7 @@ export default function Home() {
                                   </span>
                                   <span className="text-muted-foreground">
                                     {target !== null && target !== 0
-                                      ? `${((actual / target) * 100).toFixed(0)}%`
+                                      ? `${Math.max(0, (actual / target) * 100).toFixed(0)}%`
                                       : '—'}
                                   </span>
                                 </div>
