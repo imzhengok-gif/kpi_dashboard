@@ -206,11 +206,13 @@ export default function Home() {
   // 计算 KPI 得分
   const calculateKPI = (actual: number, target: number | null, weightPercentage: number) => {
     if (target === null || target === 0) {
-      return Math.min(actual, weightPercentage);
+      // 最低分为0分，最多保留四位小数
+      return Math.max(0, Math.min(actual, weightPercentage));
     }
     const completion = actual / target;
-    const score = Math.min(completion * weightPercentage, weightPercentage);
-    return Math.round(score * 100) / 100;
+    // 最低分为0分，最高不超过权重，最多保留四位小数
+    const score = Math.max(0, Math.min(completion * weightPercentage, weightPercentage));
+    return Math.round(score * 10000) / 10000;
   };
 
   // 获取员工的 KPI 数据
@@ -260,7 +262,8 @@ export default function Home() {
   // 计算员工总分
   const getEmployeeTotalScore = (employeeId: string) => {
     const kpi = getEmployeeKPI(employeeId);
-    return Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
+    const total = Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
+    return Math.round(total * 10000) / 10000;
   };
 
   // 获取员工的总满分
@@ -338,7 +341,13 @@ export default function Home() {
         };
       })
       .filter((item) => item !== null)
-      .sort((a, b) => (b?.score || 0) - (a?.score || 0)) as Array<{
+      .sort((a, b) => {
+        // 分数一样的情况下，以完成度排名
+        if (b!.score === a!.score) {
+          return b!.completionRate - a!.completionRate;
+        }
+        return b!.score - a!.score;
+      }) as Array<{
         employeeId: string;
         employeeName: string;
         score: number;
@@ -574,10 +583,11 @@ export default function Home() {
           const target = kpi[key]?.target ?? '';
           const weight = emp.weights[key] ?? 0;
           const score = kpi[key]?.score || 0;
-          row.push(actual);
-          row.push(target);
-          row.push(weight);
-          row.push(score);
+          // 导出时确保数值最多保留四位小数
+          row.push(typeof actual === 'number' ? Math.round(actual * 10000) / 10000 : actual);
+          row.push(typeof target === 'number' ? Math.round(target * 10000) / 10000 : target);
+          row.push(typeof weight === 'number' ? Math.round(weight * 10000) / 10000 : weight);
+          row.push(typeof score === 'number' ? Math.round(score * 10000) / 10000 : score);
         });
       });
       row.push(getEmployeeTotalScore(emp.id));
@@ -664,29 +674,36 @@ export default function Home() {
               
               // 导入实际值
               const actualHeaderIndex = headers.indexOf(`${category}_${indicator.name}(实际)`);
-              if (actualHeaderIndex !== -1 && row[actualHeaderIndex]) {
+              if (actualHeaderIndex !== -1 && row[actualHeaderIndex] !== undefined && row[actualHeaderIndex] !== null) {
                 const value = row[actualHeaderIndex];
                 if (value !== '(不考核)' && value !== '') {
-                  employee[key] = parseFloat(value) || null;
+                  // 最多保留四位小数
+                  const parsed = parseFloat(value);
+                  employee[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
                 }
               }
               
               // 导入目标值
               const targetHeaderIndex = headers.indexOf(`${category}_${indicator.name}(目标)`);
-              if (targetHeaderIndex !== -1 && row[targetHeaderIndex]) {
+              if (targetHeaderIndex !== -1 && row[targetHeaderIndex] !== undefined && row[targetHeaderIndex] !== null) {
                 const value = row[targetHeaderIndex];
                 if (value !== '' && value !== undefined) {
-                  employee.targets[key] = parseFloat(value) || null;
+                  const parsed = parseFloat(value);
+                  employee.targets[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
                 }
               }
               
-              // 导入权重
+              // 导入权重 - 严格根据表格中的权重数据进行导入
               const weightHeaderIndex = headers.indexOf(`${category}_${indicator.name}(权重%)`);
-              if (weightHeaderIndex !== -1 && row[weightHeaderIndex]) {
+              if (weightHeaderIndex !== -1 && row[weightHeaderIndex] !== undefined && row[weightHeaderIndex] !== null) {
                 const value = row[weightHeaderIndex];
                 if (value !== '' && value !== undefined) {
-                  employee.weights[key] = parseFloat(value) || 0;
+                  const parsed = parseFloat(value);
+                  employee.weights[key] = isNaN(parsed) ? 0 : Math.round(parsed * 10000) / 10000;
                 }
+              } else if (employee.weights[key] === undefined) {
+                // 如果表格中没有权重且员工原本也没有该权重，则使用面板默认权重
+                employee.weights[key] = indicator.weight * 100;
               }
               
               // 设置启用状态
