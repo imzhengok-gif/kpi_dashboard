@@ -33,8 +33,8 @@ interface EmployeeData {
 }
 
 // --- LocalStorage 工具函数 ---
-const STORAGE_KEY = 'kpi_dashboard_dynamic_data_v2';
-const INDICATORS_KEY = 'kpi_dashboard_indicators_v2';
+const STORAGE_KEY = 'kpi_dashboard_dynamic_data_v3';
+const INDICATORS_KEY = 'kpi_dashboard_indicators_v3';
 
 const saveToLocalStorage = (employees: EmployeeData[], indicators: KPIIndicator[]) => {
   try {
@@ -72,6 +72,9 @@ export default function Home() {
   const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
   const [selectedIndicatorForRanking, setSelectedIndicatorForRanking] = useState<string | null>(null);
   const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<string | null>(null);
+  const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
+  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+  const [copySuccess, setCopySuccess] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
@@ -304,9 +307,33 @@ export default function Home() {
     setIndicators([...indicators, { id: newId, name: `新指标`, unit: '个', defaultTarget: 100, defaultWeight: 10 }]);
   };
 
+  const handleBatchCopy = () => {
+    if (!batchMode || selectedEmployees.size === 0) return;
+    const sourceEmp = employees.find(e => e.id === batchMode.sourceId);
+    if (!sourceEmp) return;
+
+    setEmployees(employees.map(emp => {
+      if (selectedEmployees.has(emp.id) && emp.id !== batchMode.sourceId) {
+        if (batchMode.type === 'weights') {
+          return { ...emp, weights: { ...sourceEmp.weights } };
+        } else {
+          return { ...emp, targets: { ...sourceEmp.targets } };
+        }
+      }
+      return emp;
+    }));
+
+    setCopySuccess(true);
+    setTimeout(() => {
+      setCopySuccess(false);
+      setBatchMode(null);
+      setSelectedEmployees(new Set());
+    }, 2000);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* 顶部导航栏 - 还原上一版 UI */}
+      {/* 顶部导航栏 */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -372,20 +399,57 @@ export default function Home() {
               </div>
             </div>
 
+            {batchMode && (
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center justify-between animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-600 p-2 rounded-full">
+                    <Copy className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-blue-900">批量复制模式: {batchMode.type === 'weights' ? '权重' : '目标值'}</p>
+                    <p className="text-xs text-blue-700">请选择要应用到的员工，然后点击确认</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => setBatchMode(null)} variant="ghost" size="sm" className="text-slate-500">取消</Button>
+                  <Button onClick={handleBatchCopy} size="sm" className="bg-blue-600 hover:bg-blue-700 gap-2">
+                    {copySuccess ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    确认应用 ({selectedEmployees.size})
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-6">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee);
                 const totalMaxScore = getEmployeeTotalMaxScore(employee);
+                const isSelected = selectedEmployees.has(employee.id);
+                
                 return (
-                  <Card key={employee.id} className="p-6 border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white overflow-hidden">
+                  <Card key={employee.id} className={`p-6 border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white overflow-hidden ${isSelected ? 'ring-2 ring-blue-500 border-transparent' : ''}`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-6 border-b border-slate-100">
-                      <div className="flex-1 w-full md:w-auto">
-                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest">员工名称</label>
-                        <Input
-                          value={employee.name}
-                          onChange={(e) => setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
-                          className="max-w-xs font-bold text-xl border-none hover:bg-slate-50 focus:bg-white p-0 h-auto focus-visible:ring-0"
-                        />
+                      <div className="flex items-center gap-4 flex-1 w-full md:w-auto">
+                        {batchMode && employee.id !== batchMode.sourceId && (
+                          <Checkbox 
+                            checked={isSelected} 
+                            onCheckedChange={() => {
+                              const next = new Set(selectedEmployees);
+                              if (next.has(employee.id)) next.delete(employee.id);
+                              else next.add(employee.id);
+                              setSelectedEmployees(next);
+                            }}
+                            className="w-6 h-6 border-slate-300 data-[state=checked]:bg-blue-600"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest">员工名称</label>
+                          <Input
+                            value={employee.name}
+                            onChange={(e) => setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
+                            className="max-w-xs font-bold text-xl border-none hover:bg-slate-50 focus:bg-white p-0 h-auto focus-visible:ring-0"
+                          />
+                        </div>
                       </div>
                       <div className="flex items-center gap-8">
                         <div className="text-right">
@@ -396,6 +460,17 @@ export default function Home() {
                           </div>
                         </div>
                         <div className="flex gap-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-10 w-10 p-0 rounded-lg border-slate-200 text-slate-600">
+                                <Copy className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => { setBatchMode({ sourceId: employee.id, type: 'targets' }); setSelectedEmployees(new Set()); }}>复制目标值到其他员工</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setBatchMode({ sourceId: employee.id, type: 'weights' }); setSelectedEmployees(new Set()); }}>复制权重到其他员工</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           <Button
                             onClick={() => setEditingMode(editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? null : { employeeId: employee.id, mode: 'targets' })}
                             variant={editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? "default" : "outline"}
@@ -591,7 +666,7 @@ export default function Home() {
                 </div>
               </Card>
 
-              {/* 底部：员工业务完成度排名 - 找回缺失的模块 */}
+              {/* 底部：员工业务完成度排名 */}
               <Card className="p-6 lg:col-span-3 border-slate-200 shadow-sm rounded-xl bg-white">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
