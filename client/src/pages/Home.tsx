@@ -601,20 +601,26 @@ export default function Home() {
     
     // 表头：员工名称 + 各指标(实际值、目标值、权重%、得分)
     const headers = ['员工名称'];
+    const subHeaders = ['ID/标识符']; // 新增一行用于存储固定标识符，防止名称修改导致匹配失败
     const allIndicators = getAllIndicators();
+    
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
       categoryData.指标.forEach((indicator) => {
         const key = `${category}_${indicator.name}`;
         const currentIndicator = allIndicators.find(i => i.key === key) || indicator;
-        headers.push(`${currentIndicator.name}(实际)`);
-        headers.push(`${currentIndicator.name}(目标)`);
-        headers.push(`${currentIndicator.name}(权重%)`);
-        headers.push(`${currentIndicator.name}(得分)`);
-        headers.push(`${currentIndicator.name}(单位)`); // 导出单位以便导入时同步
+        
+        // 第一行：显示名称（用户可改）
+        headers.push(`${currentIndicator.name}(实际)`, `${currentIndicator.name}(目标)`, `${currentIndicator.name}(权重%)`, `${currentIndicator.name}(得分)`, `${currentIndicator.name}(单位)`);
+        
+        // 第二行：固定标识符（系统识别用，用户不应修改）
+        subHeaders.push(`${key}_actual`, `${key}_target`, `${key}_weight`, `${key}_score`, `${key}_unit`);
       });
     });
     headers.push('总分');
+    subHeaders.push('total_score');
+    
     ws_data.push(headers);
+    ws_data.push(subHeaders);
 
     // 员工行 - 填充完整数据
     employees.forEach((emp) => {
@@ -681,11 +687,16 @@ export default function Home() {
         }
 
         const headers = jsonData[0];
+        // 检查是否包含标识符行（第二行）
+        const hasIdRow = jsonData[1] && jsonData[1].some((cell: any) => typeof cell === 'string' && cell.includes('_actual'));
+        const dataStartRow = hasIdRow ? 2 : 1;
+        const idRow = hasIdRow ? jsonData[1] : null;
+
         // 完全替换现有数据
         const newEmployees: EmployeeData[] = [];
         
         // 从Excel中读取所有员工数据
-        for (let i = 1; i < jsonData.length; i++) {
+        for (let i = dataStartRow; i < jsonData.length; i++) {
           const row = jsonData[i];
           const employeeName = row[0];
           if (!employeeName) continue;
@@ -717,20 +728,24 @@ export default function Home() {
             categoryData.指标.forEach((indicator) => {
               const key = `${category}_${indicator.name}`;
               
-              // 尝试匹配表头（支持原始名称和自定义名称）
-              const findHeaderIndex = (suffix: string) => {
-                // 1. 尝试匹配原始名称
-                let idx = headers.indexOf(`${category}_${indicator.name}${suffix}`);
-                if (idx !== -1) return idx;
-                
-                // 2. 尝试模糊匹配（只要包含后缀且在合适位置）
-                return headers.findIndex((h: string) => h && h.endsWith(suffix));
+              // 智能匹配索引：优先使用固定标识符行，其次使用表头文字匹配
+              const getIndex = (suffix: string, idSuffix: string) => {
+                if (idRow) {
+                  const idx = idRow.indexOf(`${key}${idSuffix}`);
+                  if (idx !== -1) return idx;
+                }
+                // 备选方案：通过表头文字匹配（兼容旧模板）
+                const headerName = (employee.customIndicatorNames as any)?.[key] || indicator.name;
+                let idx = headers.indexOf(`${headerName}${suffix}`);
+                if (idx === -1) idx = headers.indexOf(`${category}_${indicator.name}${suffix}`);
+                if (idx === -1) idx = headers.findIndex((h: any) => typeof h === 'string' && h.endsWith(suffix) && h.includes(headerName.substring(0, 2)));
+                return idx;
               };
 
               // 导入实际值
-              const actualHeaderIndex = findHeaderIndex('(实际)');
-              if (actualHeaderIndex !== -1 && row[actualHeaderIndex] !== undefined && row[actualHeaderIndex] !== null) {
-                const value = row[actualHeaderIndex];
+              const actualIdx = getIndex('(实际)', '_actual');
+              if (actualIdx !== -1 && row[actualIdx] !== undefined && row[actualIdx] !== null) {
+                const value = row[actualIdx];
                 if (value !== '(不考核)' && value !== '') {
                   const parsed = parseFloat(value);
                   employee[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
@@ -738,9 +753,9 @@ export default function Home() {
               }
               
               // 导入目标值
-              const targetHeaderIndex = findHeaderIndex('(目标)');
-              if (targetHeaderIndex !== -1 && row[targetHeaderIndex] !== undefined && row[targetHeaderIndex] !== null) {
-                const value = row[targetHeaderIndex];
+              const targetIdx = getIndex('(目标)', '_target');
+              if (targetIdx !== -1 && row[targetIdx] !== undefined && row[targetIdx] !== null) {
+                const value = row[targetIdx];
                 if (value !== '' && value !== undefined) {
                   const parsed = parseFloat(value);
                   employee.targets[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
@@ -748,27 +763,28 @@ export default function Home() {
               }
               
               // 导入权重
-              const weightHeaderIndex = findHeaderIndex('(权重%)');
-              if (weightHeaderIndex !== -1 && row[weightHeaderIndex] !== undefined && row[weightHeaderIndex] !== null) {
-                const value = row[weightHeaderIndex];
+              const weightIdx = getIndex('(权重%)', '_weight');
+              if (weightIdx !== -1 && row[weightIdx] !== undefined && row[weightIdx] !== null) {
+                const value = row[weightIdx];
                 if (value !== '' && value !== undefined) {
                   const parsed = parseFloat(value);
                   employee.weights[key] = isNaN(parsed) ? 0 : Math.round(parsed * 10000) / 10000;
                 }
               }
 
-              // 导入名称和单位（同步到 customIndicatorNames/Units）
-              const nameHeader = headers.find((h: string) => h && h.endsWith('(实际)'));
-              if (nameHeader) {
-                const customName = nameHeader.replace('(实际)', '');
+              // 导入名称（从表头获取最新名称）
+              const nameIdx = getIndex('(实际)', '_actual');
+              if (nameIdx !== -1 && headers[nameIdx]) {
+                const customName = String(headers[nameIdx]).replace('(实际)', '');
                 if (!employee.customIndicatorNames) employee.customIndicatorNames = {};
                 (employee.customIndicatorNames as any)[key] = customName;
               }
 
-              const unitHeaderIndex = findHeaderIndex('(单位)');
-              if (unitHeaderIndex !== -1 && row[unitHeaderIndex]) {
+              // 导入单位
+              const unitIdx = getIndex('(单位)', '_unit');
+              if (unitIdx !== -1 && row[unitIdx]) {
                 if (!employee.customIndicatorUnits) employee.customIndicatorUnits = {};
-                (employee.customIndicatorUnits as any)[key] = String(row[unitHeaderIndex]);
+                (employee.customIndicatorUnits as any)[key] = String(row[unitIdx]);
               }
 
               if (employee.weights[key] === undefined) {
