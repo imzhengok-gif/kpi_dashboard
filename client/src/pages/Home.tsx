@@ -1665,8 +1665,8 @@ export default function Home() {
                         return (
                           <tr key={indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
                             <td style={{ padding: '8px' }}>{indicator.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{actual}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{actual !== null ? `${actual}${indicator.unit}` : '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{target !== null && target !== undefined ? `${target}${indicator.unit}` : '—'}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{weight.toFixed(2)}%</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{score.toFixed(2)}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>
@@ -1724,8 +1724,8 @@ export default function Home() {
                           <tr key={item.emp.id} style={{ borderBottom: '1px solid #ddd' }}>
                             <td style={{ padding: '8px' }}>{index + 1}</td>
                             <td style={{ padding: '8px' }}>{item.emp.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual !== null ? `${item.actual}${indicator.unit}` : '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target !== null && item.target !== undefined ? `${item.target}${indicator.unit}` : '—'}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
                           </tr>
@@ -1789,20 +1789,18 @@ export default function Home() {
                           <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>全员排名</th>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {sortedRankings.map((item, index) => (
-                          <tr key={item.indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
+	                      </thead>
+	                      <tbody>
+	                           {sortedRankings.map((item, index) => (                     <tr key={item.indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
                             <td style={{ padding: '8px' }}>{index + 1}</td>
                             <td style={{ padding: '8px' }}>{item.indicator.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target || '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual !== null ? `${item.actual}${item.indicator.unit}` : '—'}</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target !== null && item.target !== undefined ? `${item.target}${item.indicator.unit}` : '—'}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.rank}/{item.totalEmployees}</td>
                           </tr>
-                        ))}
-                      </tbody>
+                        ))}    </tbody>
                     </table>
                   </div>
                 );
