@@ -821,33 +821,37 @@ export default function Home() {
 
     const content = element.innerHTML;
     
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>KPI 成绩报告</title>
-          ${mode === 'visual' ? styles : ''}
-          <style>
-            @media print {
-              body { padding: 20px; color: #000; background: #fff; }
-              .no-print { display: none !important; }
-              table { page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-              h1, h2, h3 { page-break-after: avoid; }
-              ${mode === 'data' ? `
-                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-                th { background-color: #f2f2f2; }
-              ` : ''}
-            }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-            ${mode === 'data' ? `
-              .visual-only { display: none !important; }
-              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-              th { background-color: #f2f2f2; }
-            ` : ''}
-          </style>
-        </head>
+	    printWindow.document.write(`
+	      <html>
+	        <head>
+	          <title>KPI 成绩报告</title>
+	          ${mode === 'visual' ? styles : ''}
+	          <style>
+	            @media print {
+	              body { padding: 20px; color: #000; background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+	              .no-print { display: none !important; }
+	              table { page-break-inside: auto; }
+	              tr { page-break-inside: avoid; page-break-after: auto; }
+	              h1, h2, h3 { page-break-after: avoid; }
+	              /* 强制显示背景色和图形 */
+	              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+	              ${mode === 'data' ? `
+	                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+	                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+	                th { background-color: #f2f2f2 !important; }
+	              ` : ''}
+	            }
+	            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+	            ${mode === 'data' ? `
+	              .visual-only { display: none !important; }
+	              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+	              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+	              th { background-color: #f2f2f2 !important; }
+	            ` : ''}
+	            /* 确保进度条在非打印预览下也能正确显示 */
+	            .visual-mode .visual-only { display: inline-block !important; }
+	          </style>
+	        </head>
         <body>
           <div class="${mode === 'data' ? 'pure-data-mode' : 'visual-mode'}">
             ${content}
