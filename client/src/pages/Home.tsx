@@ -14,50 +14,33 @@ import {
 
 import * as XLSX from 'xlsx';
 
+// 定义 KPI 指标接口
 interface KPIIndicator {
+  id: string;
   name: string;
-  target: number | null;
-  weight: number;
   unit: string;
-  id?: string;
-  isCustom?: boolean;
+  defaultTarget: number | null;
+  defaultWeight: number;
 }
 
-interface KPICategory {
-  指标: KPIIndicator[];
-}
-
-interface KPIStructure {
-  [key: string]: KPICategory;
-}
-
+// 定义员工数据接口
 interface EmployeeData {
   id: string;
   name: string;
-  targets: { [key: string]: number | null };
-  weights: { [key: string]: number };
-  customIndicators?: { [key: string]: KPIIndicator };
-  enabledIndicators?: { [key: string]: boolean };
-  customIndicatorNames?: { [key: string]: string };
-  customIndicatorUnits?: { [key: string]: string };
-  [key: string]: any;
-}
-
-interface EmployeeKPI {
-  [key: string]: {
-    actual: number;
-    score: number;
-    target: number | null;
-  };
+  values: { [indicatorId: string]: number | null }; // 实际值
+  targets: { [indicatorId: string]: number | null }; // 目标值
+  weights: { [indicatorId: string]: number }; // 权重%
+  units: { [indicatorId: string]: string }; // 单位
 }
 
 // LocalStorage 工具函数
-const STORAGE_KEY = 'kpi_dashboard_employees';
-const STORAGE_VERSION = '1.0';
+const STORAGE_KEY = 'kpi_dashboard_dynamic_data';
+const INDICATORS_KEY = 'kpi_dashboard_indicators';
 
-const saveToLocalStorage = (data: EmployeeData[]) => {
+const saveToLocalStorage = (employees: EmployeeData[], indicators: KPIIndicator[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(employees));
+    localStorage.setItem(INDICATORS_KEY, JSON.stringify(indicators));
     console.log('✅ Data saved to LocalStorage');
     return true;
   } catch (error) {
@@ -66,13 +49,15 @@ const saveToLocalStorage = (data: EmployeeData[]) => {
   }
 };
 
-const loadFromLocalStorage = (): EmployeeData[] | null => {
+const loadFromLocalStorage = () => {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      const parsed = JSON.parse(data);
-      console.log('✅ Data loaded from LocalStorage');
-      return parsed;
+    const empData = localStorage.getItem(STORAGE_KEY);
+    const indData = localStorage.getItem(INDICATORS_KEY);
+    if (empData && indData) {
+      return {
+        employees: JSON.parse(empData) as EmployeeData[],
+        indicators: JSON.parse(indData) as KPIIndicator[]
+      };
     }
   } catch (error) {
     console.error('❌ Failed to load from LocalStorage:', error);
@@ -80,738 +65,178 @@ const loadFromLocalStorage = (): EmployeeData[] | null => {
   return null;
 };
 
-const getInitialEmployees = (): EmployeeData[] => {
-  // 首先尝试从LocalStorage加载
-  const savedData = loadFromLocalStorage();
-  if (savedData && savedData.length > 0) {
-    return savedData;
-  }
-  
-  // 如果没有保存的数据，使用默认数据
-  return [
-    { id: '1', name: '员工1', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '2', name: '员工2', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '3', name: '员工3', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '4', name: '员工4', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '5', name: '员工5', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '6', name: '员工6', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '7', name: '员工7', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '8', name: '员工8', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '9', name: '员工9', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '10', name: '员工10', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-    { id: '11', name: '员工11', targets: {}, weights: {}, customIndicators: {}, enabledIndicators: {} },
-  ];
-
-};
-
 export default function Home() {
-  const [kpiStructure, setKpiStructure] = useState<KPIStructure | null>(null);
-  const [employees, setEmployees] = useState<EmployeeData[]>(getInitialEmployees());
+  const [indicators, setIndicators] = useState<KPIIndicator[]>([]);
+  const [employees, setEmployees] = useState<EmployeeData[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [editingMode, setEditingMode] = useState<{ employeeId: string; mode: 'targets' | 'weights' } | null>(null);
-  const [batchMode, setBatchMode] = useState<{ sourceId: string; type: 'weights' | 'targets' } | null>(null);
-  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
-  const [copySuccess, setCopySuccess] = useState(false);
-  const [addingCustom, setAddingCustom] = useState<{ employeeId: string; name: string; unit: string; weight: number } | null>(null);
-  const [managingIndicators, setManagingIndicators] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('input');
   const [selectedIndicatorForRanking, setSelectedIndicatorForRanking] = useState<string | null>(null);
-  const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<string | null>(null);
-  const pdfRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
-    // 自动保存员工数据到LocalStorage和后端
+  // 初始化加载
   useEffect(() => {
-    if (employees.length === 0 || !isLoaded) return;
-    
-    // 1. 首先保存到LocalStorage（最重要，最稳定）
-    const localSaveSuccess = saveToLocalStorage(employees);
-    
-    // 2. 同时尝试保存到后端（作为备份）
-    fetch('/api/employees/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(employees),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          console.log('✅ Auto-saved to backend');
-        }
-      })
-      .catch(err => console.error('⚠️ Backend auto-save failed (data still saved locally):', err));
-  }, [employees, isLoaded]);
-
-  // 加载员工数据（优先从LocalStorage，然后从后端）
-  useEffect(() => {
-    const loadEmployees = async () => {
-      try {
-        // 1. 首先尝试从LocalStorage加载（最快，最稳定）
-        const localData = loadFromLocalStorage();
-        if (localData && localData.length > 0) {
-          setEmployees(localData);
-          setIsLoaded(true);
-          console.log('✅ Loaded from LocalStorage');
-          return;
-        }
-        
-        // 2. 如果LocalStorage没有数据，尝试从后端加载
-        console.log('LocalStorage empty, trying backend...');
-        const res = await fetch('/api/employees/load');
-        const data = await res.json();
-        if (data.success && data.data && data.data.length > 0) {
-          console.log('✅ Loaded from backend');
-          setEmployees(data.data);
-          // 同时保存到LocalStorage
-          saveToLocalStorage(data.data);
-        }
-        setIsLoaded(true);
-      } catch (error) {
-        console.error('Failed to load employees:', error);
-        setIsLoaded(true);
+    const saved = loadFromLocalStorage();
+    if (saved) {
+      setIndicators(saved.indicators);
+      setEmployees(saved.employees);
+      if (saved.indicators.length > 0) {
+        setSelectedIndicatorForRanking(saved.indicators[0].id);
       }
-    };
-    loadEmployees();
+    } else {
+      // 默认初始数据
+      const defaultIndicators: KPIIndicator[] = [
+        { id: 'kpi_1', name: '指标1', unit: '个', defaultTarget: 100, defaultWeight: 20 },
+        { id: 'kpi_2', name: '指标2', unit: '元', defaultTarget: 1000, defaultWeight: 30 },
+      ];
+      const defaultEmployees: EmployeeData[] = Array.from({ length: 5 }, (_, i) => ({
+        id: String(i + 1),
+        name: `员工${i + 1}`,
+        values: {},
+        targets: {},
+        weights: {},
+        units: {}
+      }));
+      setIndicators(defaultIndicators);
+      setEmployees(defaultEmployees);
+      setSelectedIndicatorForRanking(defaultIndicators[0].id);
+    }
+    setIsLoaded(true);
   }, []);
 
+  // 自动保存
   useEffect(() => {
-    const fetchKPIStructure = async () => {
-      try {
-        const response = await fetch('/kpi_structure.json');
-        const data: KPIStructure = await response.json();
-        setKpiStructure(data);
-
-        // 只在已加载文件数据后，才初始化权重和目标值
-        if (isLoaded) {
-          setEmployees((prevEmployees) =>
-            prevEmployees.map((emp) => {
-              // 如果已经有权重，说明是从文件加载的，不需要初始化
-              if (Object.keys(emp.weights).length > 0) {
-                return emp;
-              }
-              const targets: { [key: string]: number | null } = {};
-              const weights: { [key: string]: number } = {};
-              const enabledIndicators: { [key: string]: boolean } = {};
-              Object.entries(data).forEach(([category, categoryData]) => {
-                categoryData.指标.forEach((indicator) => {
-                  const key = `${category}_${indicator.name}`;
-                  targets[key] = indicator.target;
-                  weights[key] = indicator.weight * 100;
-                  enabledIndicators[key] = true;
-                });
-              });
-              return { ...emp, targets, weights, customIndicators: {}, enabledIndicators };
-            })
-          );
-        }
-      } catch (error) {
-        console.error('Failed to load KPI structure:', error);
-      }
-    };
-
-    fetchKPIStructure();
-  }, [isLoaded]);
-
-  // 计算 KPI 得分
-  const calculateKPI = (actual: number, target: number | null, weightPercentage: number) => {
-    if (target === null || target === 0) {
-      // 最低分为0分，最多保留四位小数
-      return Math.max(0, Math.min(actual, weightPercentage));
+    if (isLoaded && (employees.length > 0 || indicators.length > 0)) {
+      saveToLocalStorage(employees, indicators);
     }
+  }, [employees, indicators, isLoaded]);
+
+  // 计算单项得分
+  const calculateScore = (actual: number | null, target: number | null, weight: number) => {
+    if (actual === null || actual === undefined) return 0;
+    if (!target || target === 0) return Math.max(0, Math.min(actual, weight));
     const completion = actual / target;
-    // 最低分为0分，最高不超过权重，最多保留四位小数
-    const score = Math.max(0, Math.min(completion * weightPercentage, weightPercentage));
+    const score = Math.max(0, Math.min(completion * weight, weight));
     return Math.round(score * 10000) / 10000;
   };
 
-  // 获取员工的 KPI 数据
-  const getEmployeeKPI = (employeeId: string): EmployeeKPI => {
-    const kpi: EmployeeKPI = {};
-    if (!kpiStructure) return kpi;
-
-    const employee = employees.find((e) => e.id === employeeId);
-    if (!employee) return kpi;
-
-    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      categoryData.指标.forEach((indicator) => {
-        const key = `${category}_${indicator.name}`;
-        const isEnabled = employee.enabledIndicators?.[key] ?? true;
-        if (!isEnabled) return;
-
-        const actualValue = employee[key];
-        const actual = actualValue === null || actualValue === undefined ? null : parseFloat(String(actualValue));
-        const target = employee.targets[key] ?? indicator.target;
-        const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
-        kpi[key] = {
-          actual: actual ?? 0,
-          score: actual === null ? 0 : calculateKPI(actual, target, weightPercentage),
-          target,
-        };
-      });
-    });
-
-    // 添加自定义指标
-    if (employee.customIndicators) {
-      Object.entries(employee.customIndicators).forEach(([key, indicator]) => {
-        const actualValue = employee[key];
-        const actual = actualValue === null || actualValue === undefined ? null : parseFloat(String(actualValue));
-        const target = employee.targets[key] ?? indicator.target;
-        const weightPercentage = employee.weights[key] ?? indicator.weight;
-        kpi[key] = {
-          actual: actual ?? 0,
-          score: actual === null ? 0 : calculateKPI(actual, target, weightPercentage),
-          target,
-        };
-      });
-    }
-
-    return kpi;
-  };
-
   // 计算员工总分
-  const getEmployeeTotalScore = (employeeId: string) => {
-    const kpi = getEmployeeKPI(employeeId);
-    const total = Object.values(kpi).reduce((sum, item) => sum + item.score, 0);
+  const getEmployeeTotalScore = (emp: EmployeeData) => {
+    let total = 0;
+    indicators.forEach(ind => {
+      const actual = emp.values[ind.id] ?? 0;
+      const target = emp.targets[ind.id] ?? ind.defaultTarget ?? 0;
+      const weight = emp.weights[ind.id] ?? ind.defaultWeight;
+      total += calculateScore(actual, target, weight);
+    });
     return Math.round(total * 10000) / 10000;
   };
 
-  // 获取员工的总满分
-  const getEmployeeTotalMaxScore = (employeeId: string) => {
-    const employee = employees.find((e) => e.id === employeeId);
-    if (!employee) return 0;
-    if (!kpiStructure) return 0;
-
-    let maxScore = 0;
-    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      categoryData.指标.forEach((indicator) => {
-        const key = `${category}_${indicator.name}`;
-        const isEnabled = employee.enabledIndicators?.[key] ?? true;
-        if (isEnabled) {
-          maxScore += employee.weights[key] ?? indicator.weight * 100;
-        }
-      });
-    });
-
-    if (employee.customIndicators) {
-      Object.values(employee.customIndicators).forEach((indicator) => {
-        maxScore += indicator.weight;
-      });
-    }
-
-    return maxScore;
-  };
-
-  // 获取所有指标
-  const getAllIndicators = () => {
-    const indicators: Array<{ key: string; name: string; unit: string }> = [];
-    if (kpiStructure) {
-      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-        categoryData.指标.forEach((indicator) => {
-          const key = `${category}_${indicator.name}`;
-          // 优先使用第一个员工的自定义名称和单位（作为全局同步源）
-          const firstEmp = employees[0];
-          const customName = (firstEmp?.customIndicatorNames as any)?.[key] || indicator.name;
-          const customUnit = (firstEmp?.customIndicatorUnits as any)?.[key] || indicator.unit || '';
-          
-          indicators.push({
-            key,
-            name: customName,
-            unit: customUnit,
-          });
-        });
-      });
-    }
-    employees.forEach((employee) => {
-      if (employee.customIndicators) {
-        Object.entries(employee.customIndicators).forEach(([key, indicator]) => {
-          if (!indicators.find((i) => i.key === key)) {
-            indicators.push({
-              key,
-              name: indicator.name,
-              unit: indicator.unit || '',
-            });
-          }
-        });
-      }
-    });
-    return indicators;
-  };
-
-  // 获取单项指标的排名
-  const getIndicatorRanking = (indicatorKey: string) => {
-    const ranking = employees
-      .map((employee) => {
-        const kpi = getEmployeeKPI(employee.id);
-        const indicatorData = kpi[indicatorKey];
-        if (!indicatorData) {
-          return null;
-        }
-        return {
-          employeeId: employee.id,
-          employeeName: employee.name,
-          score: indicatorData.score,
-          completionRate: indicatorData.target && indicatorData.target !== 0
-            ? (indicatorData.actual / indicatorData.target) * 100
-            : 0,
-        };
-      })
-      .filter((item) => item !== null)
-      .sort((a, b) => {
-        // 分数一样的情况下，以完成度排名
-        if (b!.score === a!.score) {
-          return b!.completionRate - a!.completionRate;
-        }
-        return b!.score - a!.score;
-      }) as Array<{
-        employeeId: string;
-        employeeName: string;
-        score: number;
-        completionRate: number;
-      }>;
-    return ranking;
-  };
-
-  // 处理员工数据输入
-  const handleEmployeeDataChange = (employeeId: string, key: string, value: string) => {
-    const numValue = value === '' ? null : parseFloat(value);
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId ? { ...emp, [key]: isNaN(numValue as number) ? null : numValue } : emp
-      )
-    );
-  };
-
-  // 处理员工名称变更
-  const handleEmployeeNameChange = (employeeId: string, name: string) => {
-    setEmployees(
-      employees.map((emp) => (emp.id === employeeId ? { ...emp, name } : emp))
-    );
-  };
-
-  // 处理员工目标值变更
-  const handleEmployeeTargetChange = (employeeId: string, indicatorKey: string, value: string) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId
-          ? {
-              ...emp,
-              targets: {
-                ...emp.targets,
-                [indicatorKey]: value === '' ? null : parseFloat(value),
-              },
-            }
-          : emp
-      )
-    );
-  };
-
-  // 处理员工权重变更
-  const handleEmployeeWeightChange = (employeeId: string, indicatorKey: string, value: string) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId
-          ? {
-              ...emp,
-              weights: {
-                ...emp.weights,
-                [indicatorKey]: parseFloat(value) || 0,
-              },
-            }
-          : emp
-      )
-    );
-  };
-
-  // 处理指标名称变更（同步到所有员工）
-  const handleIndicatorNameChange = (indicatorKey: string, newName: string) => {
-    setEmployees(
-      employees.map((emp) => ({
-        ...emp,
-        customIndicatorNames: {
-          ...((emp.customIndicatorNames as object) || {}),
-          [indicatorKey]: newName,
-        },
-      }))
-    );
-  };
-
-  // 处理指标单位变更（同步到所有员工）
-  const handleIndicatorUnitChange = (indicatorKey: string, newUnit: string) => {
-    setEmployees(
-      employees.map((emp) => ({
-        ...emp,
-        customIndicatorUnits: {
-          ...((emp.customIndicatorUnits as object) || {}),
-          [indicatorKey]: newUnit,
-        },
-      }))
-    );
-  };
-
-  // 切换指标启用状态
-  const toggleIndicatorEnabled = (employeeId: string, indicatorKey: string) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId
-          ? {
-              ...emp,
-              enabledIndicators: {
-                ...emp.enabledIndicators,
-                [indicatorKey]: !(emp.enabledIndicators?.[indicatorKey] ?? true),
-              },
-            }
-          : emp
-      )
-    );
-  };
-
-  // 添加自定义考核项目
-  const addCustomIndicator = (employeeId: string) => {
-    if (!addingCustom || !addingCustom.name) return;
-
-    const customKey = `custom_${Date.now()}`;
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId
-          ? {
-              ...emp,
-              customIndicators: {
-                ...emp.customIndicators,
-                [customKey]: {
-                  name: addingCustom.name,
-                  unit: addingCustom.unit,
-                  weight: addingCustom.weight,
-                  target: null,
-                  isCustom: true,
-                },
-              },
-              weights: {
-                ...emp.weights,
-                [customKey]: addingCustom.weight,
-              },
-              targets: {
-                ...emp.targets,
-                [customKey]: null,
-              },
-            }
-          : emp
-      )
-    );
-    setAddingCustom(null);
-  };
-
-  // 删除自定义考核项目
-  const removeCustomIndicator = (employeeId: string, indicatorKey: string) => {
-    setEmployees(
-      employees.map((emp) =>
-        emp.id === employeeId
-          ? {
-              ...emp,
-              customIndicators: Object.fromEntries(
-                Object.entries(emp.customIndicators || {}).filter(([key]) => key !== indicatorKey)
-              ),
-              weights: Object.fromEntries(
-                Object.entries(emp.weights).filter(([key]) => key !== indicatorKey)
-              ),
-              targets: Object.fromEntries(
-                Object.entries(emp.targets).filter(([key]) => key !== indicatorKey)
-              ),
-            }
-          : emp
-      )
-    );
-  };
-
-  // 批量复制权重或目标值
-  const handleBatchCopy = () => {
-    if (!batchMode || selectedEmployees.size === 0) return;
-
-    const sourceEmployee = employees.find((e) => e.id === batchMode.sourceId);
-    if (!sourceEmployee) return;
-
-    setEmployees(
-      employees.map((emp) => {
-        if (selectedEmployees.has(emp.id) && emp.id !== batchMode.sourceId) {
-          if (batchMode.type === 'weights') {
-            return {
-              ...emp,
-              weights: { ...sourceEmployee.weights },
-            };
-          } else {
-            return {
-              ...emp,
-              targets: { ...sourceEmployee.targets },
-            };
-          }
-        }
-        return emp;
-      })
-    );
-
-    setCopySuccess(true);
-    setTimeout(() => {
-      setCopySuccess(false);
-      setBatchMode(null);
-      setSelectedEmployees(new Set());
-    }, 2000);
-  };
-
-  // 切换员工选择
-  const toggleEmployeeSelection = (employeeId: string) => {
-    const newSelected = new Set(selectedEmployees);
-    if (newSelected.has(employeeId)) {
-      newSelected.delete(employeeId);
-    } else {
-      newSelected.add(employeeId);
-    }
-    setSelectedEmployees(newSelected);
-  };
-
-  // 添加员工
-  const addEmployee = () => {
-    const newId = String(Math.max(...employees.map(e => parseInt(e.id))) + 1);
-    const targets: { [key: string]: number | null } = {};
-    const weights: { [key: string]: number } = {};
-    const enabledIndicators: { [key: string]: boolean } = {};
-    if (kpiStructure) {
-      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-        categoryData.指标.forEach((indicator) => {
-          const key = `${category}_${indicator.name}`;
-          targets[key] = indicator.target;
-          weights[key] = indicator.weight * 100;
-          enabledIndicators[key] = true;
-        });
-      });
-    }
-    setEmployees([...employees, { id: newId, name: `员工${newId}`, targets, weights, customIndicators: {}, enabledIndicators }]);
-  };
-
-  // 删除员工
-  const removeEmployee = (employeeId: string) => {
-    if (employees.length > 1) {
-      setEmployees(employees.filter((emp) => emp.id !== employeeId));
-      selectedEmployees.delete(employeeId);
-    }
-  };
-
-  // 导出为 Excel
-  const saveData = () => {
-    if (!kpiStructure) return;
-
+  // 导出数据 (5列一组)
+  const handleExport = () => {
     const ws_data: any[] = [];
     
-    // 表头：员工名称 + 各指标(实际值、目标值、权重%、得分)
-    const headers = ['员工名称'];
-    const subHeaders = ['ID/标识符']; // 新增一行用于存储固定标识符，防止名称修改导致匹配失败
-    const allIndicators = getAllIndicators();
-    
-    Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-      categoryData.指标.forEach((indicator) => {
-        const key = `${category}_${indicator.name}`;
-        const currentIndicator = allIndicators.find(i => i.key === key) || indicator;
-        
-        // 第一行：显示名称（用户可改）
-        headers.push(`${currentIndicator.name}(实际)`, `${currentIndicator.name}(目标)`, `${currentIndicator.name}(权重%)`, `${currentIndicator.name}(得分)`, `${currentIndicator.name}(单位)`);
-        
-        // 第二行：固定标识符（系统识别用，用户不应修改）
-        subHeaders.push(`${key}_actual`, `${key}_target`, `${key}_weight`, `${key}_score`, `${key}_unit`);
-      });
+    // 第一行：表头 (名称)
+    const header1 = ['员工名称'];
+    indicators.forEach(ind => {
+      header1.push(`${ind.name}(实际)`, `${ind.name}(目标)`, `${ind.name}(权重%)`, `${ind.name}(得分)`, `${ind.name}(单位)`);
     });
-    headers.push('总分');
-    subHeaders.push('total_score');
-    
-    ws_data.push(headers);
-    ws_data.push(subHeaders);
+    header1.push('总分');
+    ws_data.push(header1);
 
-    // 员工行 - 填充完整数据
-    employees.forEach((emp) => {
+    // 员工数据行
+    employees.forEach(emp => {
       const row: any[] = [emp.name];
-      const kpi = getEmployeeKPI(emp.id);
-      Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-        categoryData.指标.forEach((indicator) => {
-          const key = `${category}_${indicator.name}`;
-          const currentIndicator = allIndicators.find(i => i.key === key) || indicator;
-          const actual = kpi[key]?.actual || 0;
-          const target = kpi[key]?.target ?? '';
-          const weight = emp.weights[key] ?? 0;
-          const score = kpi[key]?.score || 0;
-          // 导出时确保数值最多保留四位小数
-          row.push(typeof actual === 'number' ? Math.round(actual * 10000) / 10000 : actual);
-          row.push(typeof target === 'number' ? Math.round(target * 10000) / 10000 : target);
-          row.push(typeof weight === 'number' ? Math.round(weight * 10000) / 10000 : weight);
-          row.push(typeof score === 'number' ? Math.round(score * 10000) / 10000 : score);
-          row.push(currentIndicator.unit);
-        });
+      let totalScore = 0;
+      indicators.forEach(ind => {
+        const actual = emp.values[ind.id] ?? null;
+        const target = emp.targets[ind.id] ?? ind.defaultTarget;
+        const weight = emp.weights[ind.id] ?? ind.defaultWeight;
+        const unit = emp.units[ind.id] ?? ind.unit;
+        const score = calculateScore(actual, target, weight);
+        totalScore += score;
+        row.push(actual, target, weight, score, unit);
       });
-      row.push(getEmployeeTotalScore(emp.id));
+      row.push(Math.round(totalScore * 10000) / 10000);
       ws_data.push(row);
     });
 
-    const ws = XLSX.utils.aoa_to_sheet(ws_data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'KPI数据');
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    XLSX.utils.book_append_sheet(wb, ws, "KPI数据");
     XLSX.writeFile(wb, `KPI数据_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
-  // 保存数据到文件
-  const saveToFile = () => {
-    // 保存到LocalStorage
-    const localSaveSuccess = saveToLocalStorage(employees);
-    
-    // 显示提示框
-    if (localSaveSuccess) {
-      alert('✅ 数据保存成功！');
-      console.log('✅ Data saved successfully');
-    } else {
-      alert('❌ 数据保存失败！');
-      console.error('Save failed');
-    }
-  };
 
-
-
-  // 导入 Excel 数据 - 完全替换现有数据
-  const handleImportFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !kpiStructure) return;
+  // 导入数据 (5列一组动态识别)
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (evt) => {
       try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[];
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-        if (jsonData.length < 2) {
-          alert('Excel 文件格式不正确');
-          return;
-        }
+        if (jsonData.length < 1) return;
 
         const headers = jsonData[0];
-        // 检查是否包含标识符行（第二行）
-        const hasIdRow = jsonData[1] && jsonData[1].some((cell: any) => typeof cell === 'string' && cell.includes('_actual'));
-        const dataStartRow = hasIdRow ? 2 : 1;
-        const idRow = hasIdRow ? jsonData[1] : null;
-
-        // 完全替换现有数据
-        const newEmployees: EmployeeData[] = [];
+        const newIndicators: KPIIndicator[] = [];
         
-        // 从Excel中读取所有员工数据
-        for (let i = dataStartRow; i < jsonData.length; i++) {
-          const row = jsonData[i];
-          const employeeName = row[0];
-          if (!employeeName) continue;
-          
-          // 查找或创建员工
-          let employee = employees.find(e => e.name === employeeName);
-          if (!employee) {
-            const newId = String(Math.max(...employees.map(e => parseInt(e.id)), 0) + newEmployees.length + 1);
-            employee = {
-              id: newId,
-              name: employeeName,
-              targets: {},
-              weights: {},
-              customIndicators: {},
-              enabledIndicators: {}
-            };
-          } else {
-            // 重置员工数据
-            employee = {
-              ...employee,
-              targets: {},
-              weights: {},
-              customIndicators: {},
-              enabledIndicators: {}
-            };
-          }
-                    // 填充指标数据
-          Object.entries(kpiStructure).forEach(([category, categoryData]) => {
-            categoryData.指标.forEach((indicator) => {
-              const key = `${category}_${indicator.name}`;
-              
-              // 智能匹配索引：优先使用固定标识符行，其次使用表头文字匹配
-              const getIndex = (suffix: string, idSuffix: string) => {
-                if (idRow) {
-                  const idx = idRow.indexOf(`${key}${idSuffix}`);
-                  if (idx !== -1) return idx;
-                }
-                // 备选方案：通过表头文字匹配（兼容旧模板）
-                const headerName = (employee.customIndicatorNames as any)?.[key] || indicator.name;
-                let idx = headers.indexOf(`${headerName}${suffix}`);
-                if (idx === -1) idx = headers.indexOf(`${category}_${indicator.name}${suffix}`);
-                if (idx === -1) idx = headers.findIndex((h: any) => typeof h === 'string' && h.endsWith(suffix) && h.includes(headerName.substring(0, 2)));
-                return idx;
-              };
-
-              // 导入实际值
-              const actualIdx = getIndex('(实际)', '_actual');
-              if (actualIdx !== -1 && row[actualIdx] !== undefined && row[actualIdx] !== null) {
-                const value = row[actualIdx];
-                if (value !== '(不考核)' && value !== '') {
-                  const parsed = parseFloat(value);
-                  employee[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
-                }
-              }
-              
-              // 导入目标值
-              const targetIdx = getIndex('(目标)', '_target');
-              if (targetIdx !== -1 && row[targetIdx] !== undefined && row[targetIdx] !== null) {
-                const value = row[targetIdx];
-                if (value !== '' && value !== undefined) {
-                  const parsed = parseFloat(value);
-                  employee.targets[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
-                }
-              }
-              
-              // 导入权重
-              const weightIdx = getIndex('(权重%)', '_weight');
-              if (weightIdx !== -1 && row[weightIdx] !== undefined && row[weightIdx] !== null) {
-                const value = row[weightIdx];
-                if (value !== '' && value !== undefined) {
-                  const parsed = parseFloat(value);
-                  employee.weights[key] = isNaN(parsed) ? 0 : Math.round(parsed * 10000) / 10000;
-                }
-              }
-
-              // 导入名称（从表头获取最新名称）
-              const nameIdx = getIndex('(实际)', '_actual');
-              if (nameIdx !== -1 && headers[nameIdx]) {
-                const customName = String(headers[nameIdx]).replace('(实际)', '');
-                if (!employee.customIndicatorNames) employee.customIndicatorNames = {};
-                (employee.customIndicatorNames as any)[key] = customName;
-              }
-
-              // 导入单位
-              const unitIdx = getIndex('(单位)', '_unit');
-              if (unitIdx !== -1 && row[unitIdx]) {
-                if (!employee.customIndicatorUnits) employee.customIndicatorUnits = {};
-                (employee.customIndicatorUnits as any)[key] = String(row[unitIdx]);
-              }
-
-              if (employee.weights[key] === undefined) {
-                // 如果表格中没有权重且员工原本也没有该权重，则使用面板默认权重
-                employee.weights[key] = indicator.weight * 100;
-              }
-              
-              // 设置启用状态
-              if (!employee.enabledIndicators) employee.enabledIndicators = {};
-              employee.enabledIndicators[key] = true;
+        // 识别指标：从第2列开始，每5列一组
+        for (let i = 1; i < headers.length - 1; i += 5) {
+          const baseName = String(headers[i]).replace('(实际)', '');
+          if (baseName && baseName !== '总分') {
+            newIndicators.push({
+              id: `kpi_${(i - 1) / 5 + 1}`,
+              name: baseName,
+              unit: '', // 将从数据行中获取
+              defaultTarget: 0,
+              defaultWeight: 0
             });
+          }
+        }
+
+        const newEmployees: EmployeeData[] = [];
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          if (!row[0]) continue;
+
+          const emp: EmployeeData = {
+            id: String(i),
+            name: String(row[0]),
+            values: {},
+            targets: {},
+            weights: {},
+            units: {}
+          };
+
+          newIndicators.forEach((ind, idx) => {
+            const baseIdx = 1 + idx * 5;
+            emp.values[ind.id] = row[baseIdx] !== undefined ? parseFloat(row[baseIdx]) : null;
+            emp.targets[ind.id] = row[baseIdx + 1] !== undefined ? parseFloat(row[baseIdx + 1]) : null;
+            emp.weights[ind.id] = row[baseIdx + 2] !== undefined ? parseFloat(row[baseIdx + 2]) : 0;
+            emp.units[ind.id] = row[baseIdx + 4] ? String(row[baseIdx + 4]) : '';
+            
+            // 同步单位到指标定义（取第一个员工的单位作为默认）
+            if (i === 1) {
+              ind.unit = emp.units[ind.id];
+              ind.defaultTarget = emp.targets[ind.id];
+              ind.defaultWeight = emp.weights[ind.id];
+            }
           });
-          
-          newEmployees.push(employee);
+          newEmployees.push(emp);
         }
-        
-        // 完全替换员工列表
-        if (newEmployees.length > 0) {
-          setEmployees(newEmployees);
-          // 立即保存到LocalStorage
-          saveToLocalStorage(newEmployees);
-          alert(`✅ 数据导入成功！已导入 ${newEmployees.length} 名员工的数据（已自动保存）`);
-        } else {
-          alert('❌ 未找到有效的员工数据');
-        }
-      } catch (error) {
-        console.error('Import error:', error);
+
+        setIndicators(newIndicators);
+        setEmployees(newEmployees);
+        if (newIndicators.length > 0) setSelectedIndicatorForRanking(newIndicators[0].id);
+        alert(`✅ 成功导入 ${newEmployees.length} 名员工和 ${newIndicators.length} 个指标`);
+      } catch (err) {
+        console.error(err);
         alert('❌ 导入失败，请检查文件格式');
       }
     };
@@ -819,1122 +244,306 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // 导出为 CSV
-
-
-  // 导出为 PDF
-  const exportToPDF = (mode: 'data' | 'visual' = 'data') => {
+  // 导出 PDF
+  const handleExportPDF = (mode: 'data' | 'visual') => {
     if (!pdfRef.current) return;
-
-    const element = pdfRef.current;
     const printWindow = window.open('', '', 'width=1000,height=800');
     if (!printWindow) return;
 
-    // 获取当前页面的所有样式
     const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map(style => style.outerHTML)
-      .join('\n');
+      .map(style => style.outerHTML).join('\n');
 
-    const content = element.innerHTML;
-    
-	    printWindow.document.write(`
-	      <html>
-	        <head>
-	          <title>KPI 成绩报告</title>
-	          ${mode === 'visual' ? styles : ''}
-	          <style>
-	            @media print {
-	              body { padding: 20px; color: #000; background: #fff; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-	              .no-print { display: none !important; }
-	              table { page-break-inside: auto; }
-	              tr { page-break-inside: avoid; page-break-after: auto; }
-	              h1, h2, h3 { page-break-after: avoid; }
-	              /* 强制显示背景色和图形 */
-	              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-	              ${mode === 'data' ? `
-	                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-	                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-	                th { background-color: #f2f2f2 !important; }
-	              ` : ''}
-	            }
-	            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-	            ${mode === 'data' ? `
-	              .visual-only { display: none !important; }
-	              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-	              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
-	              th { background-color: #f2f2f2 !important; }
-	            ` : ''}
-	            /* 确保进度条在非打印预览下也能正确显示 */
-	            .visual-mode .visual-only { display: inline-block !important; }
-	          </style>
-	        </head>
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>KPI 成绩报告</title>
+          ${mode === 'visual' ? styles : ''}
+          <style>
+            @media print {
+              body { padding: 20px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+              th { background-color: #f2f2f2 !important; }
+              .progress-bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; width: 100px; display: inline-block; }
+              .progress-fill { height: 100%; background: #1e40af; }
+            }
+          </style>
+        </head>
         <body>
-          <div class="${mode === 'data' ? 'pure-data-mode' : 'visual-mode'}">
-            ${content}
-          </div>
-          <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-                window.close();
-              }, 500);
-            };
-          </script>
+          ${pdfRef.current.innerHTML}
+          <script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); }</script>
         </body>
       </html>
     `);
-    printWindow.document.close();
   };
 
-  if (!kpiStructure) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-foreground">加载数据中...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Section */}
-      <div className="bg-primary text-primary-foreground py-8">
-        <div className="container">
-          <h1 className="text-4xl font-bold mb-2">KPI 计算管理系统</h1>
-          <p className="text-lg opacity-90">输入员工数据，自动计算 KPI 成绩</p>
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">KPI 绩效管理系统</h1>
+            <p className="text-slate-500">动态指标架构 · 5列一组自由增减</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2">
+              <Upload className="w-4 h-4" /> 导入数据
+            </Button>
+            <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".xlsx,.xls" />
+            <Button onClick={handleExport} variant="outline" className="gap-2">
+              <Download className="w-4 h-4" /> 导出数据
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-2 bg-blue-700 hover:bg-blue-800">
+                  <FileText className="w-4 h-4" /> 导出 PDF <ChevronDown className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleExportPDF('data')}>纯数据版本</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPDF('visual')}>带可视化版本</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="container py-12">
-        <Tabs defaultValue="data-input" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
-            <TabsTrigger value="data-input">数据输入</TabsTrigger>
-            <TabsTrigger value="results">结果统计</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="input">数据输入</TabsTrigger>
+            <TabsTrigger value="stats">结果统计</TabsTrigger>
           </TabsList>
 
-          {/* 数据输入标签页 */}
-          <TabsContent value="data-input" className="space-y-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-foreground">员工 KPI 数据输入</h2>
-              <div className="flex gap-2">
-                <Button onClick={addEmployee} variant="outline" size="sm">
-                  <Plus className="w-4 h-4 mr-2" />
-                  添加员工
-                </Button>
-                <Button onClick={saveData} variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  导出数据
-                </Button>
-                <Button onClick={saveToFile} variant="default" size="sm">
-                  <Save className="w-4 h-4 mr-2" />
-                  保存数据
-                </Button>
-                <Button onClick={() => fileInputRef.current?.click()} variant="outline" size="sm">
-                  <Upload className="w-4 h-4 mr-2" />
-                  导入数据
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportFile}
-                  className="hidden"
-                />
-              </div>
-            </div>
-
-            {/* 批量操作面板 */}
-            {batchMode && (
-              <Card className="p-6 bg-accent/10 border-accent">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-lg font-bold text-foreground mb-2">
-                        批量复制{batchMode.type === 'weights' ? '权重' : '目标值'}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        从 <span className="font-semibold">{employees.find(e => e.id === batchMode.sourceId)?.name}</span> 复制{batchMode.type === 'weights' ? '权重' : '目标值'}到选定的员工
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => {
-                        setBatchMode(null);
-                        setSelectedEmployees(new Set());
-                      }}
-                      variant="outline"
-                      size="sm"
-                    >
-                      取消
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {employees.map((emp) => (
-                      <div
-                        key={emp.id}
-                        className="flex items-center gap-2 p-3 bg-background rounded border border-border"
-                      >
-                        <Checkbox
-                          checked={selectedEmployees.has(emp.id)}
-                          onCheckedChange={() => toggleEmployeeSelection(emp.id)}
-                          disabled={emp.id === batchMode.sourceId}
-                        />
-                        <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
-                          {emp.name}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      onClick={handleBatchCopy}
-                      disabled={selectedEmployees.size === 0}
-                      className="gap-2"
-                    >
-                      {copySuccess ? (
-                        <>
-                          <Check className="w-4 h-4" />
-                          已复制
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4" />
-                          复制到 {selectedEmployees.size} 人
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            <div className="space-y-6">
-              {employees.map((employee) => {
-                const totalScore = getEmployeeTotalScore(employee.id);
-                const totalMaxScore = getEmployeeTotalMaxScore(employee.id);
-
-                return (
-                  <Card key={employee.id} className="p-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <div className="flex-1">
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">
-                          员工名称
-                        </label>
-                        <Input
-                          value={employee.name}
-                          onChange={(e) => handleEmployeeNameChange(employee.id, e.target.value)}
-                          className="max-w-xs"
-                        />
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-muted-foreground">总分</div>
-                        <div className="text-3xl font-bold text-primary">
-                          {totalScore.toFixed(2)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">/ {totalMaxScore.toFixed(2)}</div>
-                      </div>
-                      <div className="flex gap-2 ml-4">
-                        {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
-                          <Button
-                            onClick={() => setEditingMode(null)}
-                            variant="default"
-                            size="sm"
-                          >
-                            完成
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={() => setEditingMode({ employeeId: employee.id, mode: 'targets' })}
-                            variant="outline"
-                            size="sm"
-                            title="编辑目标值"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
-                          <Button
-                            onClick={() => setEditingMode(null)}
-                            variant="default"
-                            size="sm"
-                          >
-                            完成
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={() => setEditingMode({ employeeId: employee.id, mode: 'weights' })}
-                            variant="outline"
-                            size="sm"
-                            title="编辑权重"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </Button>
-                        )}
-                        <Button
-                          onClick={() => setManagingIndicators(managingIndicators === employee.id ? null : employee.id)}
-                          variant="outline"
-                          size="sm"
-                          title="管理考核项目"
-                        >
-                          <List className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          onClick={() => setBatchMode({ sourceId: employee.id, type: 'weights' })}
-                          variant="outline"
-                          size="sm"
-                          title="批量复制权重"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          onClick={() => setBatchMode({ sourceId: employee.id, type: 'targets' })}
-                          variant="outline"
-                          size="sm"
-                          title="批量复制目标值"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        {employees.length > 1 && (
-                          <Button
-                            onClick={() => removeEmployee(employee.id)}
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 管理考核项目面板 */}
-                    {managingIndicators === employee.id && (
-                      <Card className="p-4 mb-6 bg-secondary/50 border-accent">
-                        <h4 className="font-semibold text-foreground mb-4">管理考核项目</h4>
-                        <div className="space-y-4">
-                          {/* 原考核项目 */}
-                          <div>
-                            <h5 className="text-sm font-medium text-muted-foreground mb-2">原考核项目</h5>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                              {Object.entries(kpiStructure).map(([category, categoryData]) =>
-                                categoryData.指标.map((indicator) => {
-                                  const key = `${category}_${indicator.name}`;
-                                  const isEnabled = employee.enabledIndicators?.[key] ?? true;
-                                  return (
-                                    <div
-                                      key={key}
-                                      className="flex items-center gap-2 p-3 bg-background rounded border border-border"
-                                    >
-                                      <Checkbox
-                                        checked={isEnabled}
-                                        onCheckedChange={() => toggleIndicatorEnabled(employee.id, key)}
-                                      />
-                                      <label className="text-sm font-medium text-foreground cursor-pointer flex-1">
-                                        {indicator.name}
-                                      </label>
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 自定义考核项目 */}
-                          {employee.customIndicators && Object.keys(employee.customIndicators).length > 0 && (
-                            <div>
-                              <h5 className="text-sm font-medium text-muted-foreground mb-2">自定义考核项目</h5>
-                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                {Object.entries(employee.customIndicators).map(([key, indicator]) => (
-                                  <div
-                                    key={key}
-                                    className="flex items-center gap-2 p-3 bg-background rounded border border-border"
-                                  >
-                                    <span className="text-sm font-medium text-foreground flex-1">
-                                      {indicator.name}
-                                    </span>
-                                    <Button
-                                      onClick={() => removeCustomIndicator(employee.id, key)}
-                                      variant="ghost"
-                                      size="sm"
-                                      className="p-0 h-auto"
-                                    >
-                                      <X className="w-4 h-4 text-destructive" />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    )}
-
-                    {/* 指标输入网格 */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                      {Object.entries(kpiStructure).map(([category, categoryData]) =>
-                        categoryData.指标.map((indicator) => {
-                          const key = `${category}_${indicator.name}`;
-                          const isEnabled = employee.enabledIndicators?.[key] ?? true;
-                          if (!isEnabled) return null;
-
-                          const actual = parseFloat(String(employee[key] || 0));
-                          const kpi = getEmployeeKPI(employee.id);
-                          const score = kpi[key]?.score || 0;
-                          const target = kpi[key]?.target;
-                          const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
-
-	                          const currentIndicator = getAllIndicators().find(i => i.key === key) || { name: indicator.name, unit: indicator.unit };
-	                          return (
-	                            <div key={key} className="bg-secondary p-4 rounded-lg">
-	                              <div className="flex justify-between items-start mb-2">
-	                                <Input
-	                                  className="text-sm font-medium bg-transparent border-none p-0 h-auto focus-visible:ring-0 w-full"
-	                                  value={currentIndicator.name}
-	                                  onChange={(e) => handleIndicatorNameChange(key, e.target.value)}
-	                                />
-	                              </div>
-                              <div className="flex gap-2 mb-2">
-                                <Input
-                                  type="number"
-                                  step="any"
-                                  placeholder="实际值"
-                                  value={actual !== null && actual !== undefined ? actual : ''}
-                                  onChange={(e) =>
-                                    handleEmployeeDataChange(employee.id, key, e.target.value)
-                                  }
-                                  className="flex-1"
-                                />
-	                                <Input
-	                                  className="text-sm text-muted-foreground py-1 px-2 bg-background rounded w-16 h-auto border-none text-center"
-	                                  value={currentIndicator.unit}
-	                                  onChange={(e) => handleIndicatorUnitChange(key, e.target.value)}
-	                                />
-                              </div>
-
-                              {/* 目标值编辑 */}
-                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
-                                <div className="mb-2">
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type="number"
-                                      step="any"
-                                      placeholder="留空表示不考核"
-                                      value={target ?? ''}
-                                      onChange={(e) =>
-                                        handleEmployeeTargetChange(employee.id, key, e.target.value)
-                                      }
-                                      className="flex-1 text-xs"
-                                    />
-	                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-	                                      {currentIndicator.unit}
-	                                    </span>
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {/* 权重编辑 */}
-                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
-                                <div className="mb-2">
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type="number"
-                                      step="0.1"
-                                      value={weightPercentage}
-                                      onChange={(e) =>
-                                        handleEmployeeWeightChange(employee.id, key, e.target.value)
-                                      }
-                                      className="flex-1 text-xs"
-                                    />
-                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-                                      %
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-center text-xs mb-1">
-                                  <span className="text-muted-foreground">目标: {target !== null && target !== undefined ? target : '—'}</span>
-                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
-                                </div>
-                                <div className="w-full bg-background rounded-full h-2 overflow-hidden">
-                                  <div
-                                    className="h-full bg-accent transition-all duration-300"
-                                    style={{
-                                      width: target !== null && target !== 0
-                                        ? Math.max(0, Math.min(((actual / target) * 100), 100)) + '%'
-                                        : '0%',
-                                    }}
-                                  />
-                                </div>
-                                <div className="flex justify-between items-center text-xs">
-                                  <span className="font-medium text-foreground">
-                                    {score.toFixed(2)}
-                                  </span>
-                                  <span className="text-muted-foreground">
-                                    {target !== null && target !== 0
-                                      ? `${Math.max(0, (actual / target) * 100).toFixed(0)}%`
-                                      : '—'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-
-                      {/* 自定义考核项目 */}
-                      {employee.customIndicators &&
-                        Object.entries(employee.customIndicators).map(([key, indicator]) => {
-                          const actual = parseFloat(String(employee[key] || 0));
-                          const kpi = getEmployeeKPI(employee.id);
-                          const score = kpi[key]?.score || 0;
-                          const target = kpi[key]?.target;
-                          const weightPercentage = employee.weights[key] ?? indicator.weight;
-
-                          return (
-                            <div key={key} className="bg-secondary p-4 rounded-lg">
-                              <div className="flex justify-between items-start mb-2">
-                                <label className="block text-sm font-medium text-foreground">
-                                  {indicator.name}
-                                </label>
-                              </div>
-                              <div className="flex gap-2 mb-2">
-                                <Input
-                                  type="number"
-                                  step="any"
-                                  placeholder="实际值"
-                                  value={actual !== null && actual !== undefined ? actual : ''}
-                                  onChange={(e) =>
-                                    handleEmployeeDataChange(employee.id, key, e.target.value)
-                                  }
-                                  className="flex-1"
-                                />
-                                <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
-                                  {indicator.unit}
-                                </span>
-                              </div>
-
-                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? (
-                                <div className="mb-2">
-                                  <label className="text-xs text-muted-foreground mb-1 block">
-                                    目标值
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type="number"
-                                      step="any"
-                                      placeholder="留空表示不考核"
-                                      value={target ?? ''}
-                                      onChange={(e) =>
-                                        handleEmployeeTargetChange(employee.id, key, e.target.value)
-                                      }
-                                      className="flex-1 text-xs"
-                                    />
-                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-                                      {indicator.unit}
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  目标: {target !== null && target !== undefined ? `${target} ${indicator.unit}` : '不考核'}
-                                </div>
-                              )}
-
-                              {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? (
-                                <div className="mb-2">
-                                  <label className="text-xs text-muted-foreground mb-1 block">
-                                    权重占比
-                                  </label>
-                                  <div className="flex gap-2">
-                                    <Input
-                                      type="number"
-                                      step="0.1"
-                                      value={weightPercentage}
-                                      onChange={(e) =>
-                                        handleEmployeeWeightChange(employee.id, key, e.target.value)
-                                      }
-                                      className="flex-1 text-xs"
-                                    />
-                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-                                      %
-                                    </span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  权重: {weightPercentage.toFixed(2)}%
-                                </div>
-                              )}
-
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-center text-xs mb-1">
-                                  <span className="text-muted-foreground">目标: {target !== null && target !== undefined ? target : '—'}</span>
-                                  <span className="text-muted-foreground">权重: {weightPercentage.toFixed(2)}%</span>
-                                </div>
-                                <div className="w-full bg-background rounded-full h-2 overflow-hidden">
-                                  <div
-                                    className="h-full bg-accent transition-all duration-300"
-                                    style={{
-                                      width: target !== null && target !== 0
-                                        ? Math.max(0, Math.min(((actual / target) * 100), 100)) + '%'
-                                        : '0%',
-                                    }}
-                                  />
-                                </div>
-                                <div className="flex justify-between items-center text-xs">
-                                  <span className="font-medium text-foreground">
-                                    {score.toFixed(2)}
-                                  </span>
-                                  <span className="text-muted-foreground">
-                                    {target !== null && target !== 0
-                                      ? `${Math.max(0, (actual / target) * 100).toFixed(0)}%`
-                                      : '—'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-
-                    {/* 添加自定义考核项目 */}
-                    <div className="border-t border-border pt-4">
-                      {addingCustom?.employeeId === employee.id ? (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                            <Input
-                              placeholder="项目名称"
-                              value={addingCustom.name}
-                              onChange={(e) =>
-                                setAddingCustom({ ...addingCustom, name: e.target.value })
-                              }
-                            />
-                            <Input
-                              placeholder="单位"
-                              value={addingCustom.unit}
-                              onChange={(e) =>
-                                setAddingCustom({ ...addingCustom, unit: e.target.value })
-                              }
-                            />
-                            <Input
-                              type="number"
-                              placeholder="权重占比 %"
-                              value={addingCustom.weight}
-                              onChange={(e) =>
-                                setAddingCustom({
-                                  ...addingCustom,
-                                  weight: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                            />
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={() => addCustomIndicator(employee.id)}
-                                variant="default"
-                                size="sm"
-                              >
-                                添加
-                              </Button>
-                              <Button
-                                onClick={() => setAddingCustom(null)}
-                                variant="outline"
-                                size="sm"
-                              >
-                                取消
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <Button
-                          onClick={() =>
-                            setAddingCustom({
-                              employeeId: employee.id,
-                              name: '',
-                              unit: '',
-                              weight: 0,
-                            })
-                          }
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          添加考核项目
-                        </Button>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-
-
-          </TabsContent>
-
-          {/* 结果统计标签页 */}
-          <TabsContent value="results" className="space-y-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-foreground">KPI 成绩统计</h2>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="gap-2">
-                    <Download className="w-4 h-4" />
-                    导出 PDF 报告
-                    <ChevronDown className="w-4 h-4 ml-1 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={() => exportToPDF('data')} className="gap-2 cursor-pointer">
-                    <FileText className="w-4 h-4" />
-                    <span>导出纯数据版本</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => exportToPDF('visual')} className="gap-2 cursor-pointer">
-                    <BarChart2 className="w-4 h-4" />
-                    <span>导出带可视化版本</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* 单项指标排名选择 */}
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">单项指标排名</h3>
-              <div className="mb-4">
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  选择考核指标
-                </label>
-                <select
-                  value={selectedIndicatorForRanking || ''}
-                  onChange={(e) => setSelectedIndicatorForRanking(e.target.value || null)}
-                  className="w-full p-2 border border-border rounded bg-background text-foreground"
-                >
-                  <option value="">—— 请选择指标 ——</option>
-                  {getAllIndicators().map((indicator) => (
-                    <option key={indicator.key} value={indicator.key}>
-                      {indicator.name} {indicator.unit ? `(${indicator.unit})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedIndicatorForRanking && (
-                <div>
-                  <h4 className="font-semibold text-foreground mb-4">
-                    {getAllIndicators().find((i) => i.key === selectedIndicatorForRanking)?.name} - 员工排名
-                  </h4>
-                  <div className="space-y-2">
-                                        {getIndicatorRanking(selectedIndicatorForRanking).map((item, index) => {
-                      const employee = employees.find(e => e.id === item.employeeId);
-                      const indicatorKey = selectedIndicatorForRanking;
-                      const actualValue = employee ? parseFloat(String(employee[indicatorKey] || 0)) : 0;
-                      const targetValue = employee?.targets[indicatorKey];
-                      return (
-                        <div
-                          key={item.employeeId}
-                          className="flex items-center justify-between p-4 bg-secondary rounded border border-border"
-                        >
-                          <div className="flex items-center gap-3 flex-1">
-                            <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
-                            <div>
-                              <div className="text-foreground font-medium">{item.employeeName}</div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                实际值: {actualValue} | 目标值: {targetValue !== null && targetValue !== undefined ? targetValue : '不考核'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">完成度</div>
-                              <div className="text-lg font-bold text-accent">
-                                {item.completionRate.toFixed(1)}%
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">得分</div>
-                              <div className="text-lg font-bold text-accent">
-                                {item.score.toFixed(2)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </Card>
-
-            {/* 员工业务完成度排名 */}
-            <Card className="p-6 mb-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">员工业务完成度排名</h3>
-              <div className="mb-4">
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  选择员工
-                </label>
-                <select
-                  value={selectedEmployeeForDetail || ''}
-                  onChange={(e) => setSelectedEmployeeForDetail(e.target.value || null)}
-                  className="w-full p-2 border border-border rounded bg-background text-foreground"
-                >
-                  <option value="">—— 请选择员工 ——</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedEmployeeForDetail && (() => {
-                const selectedEmp = employees.find(e => e.id === selectedEmployeeForDetail);
-                if (!selectedEmp) return null;
-
-                const indicators = getAllIndicators();
-                const indicatorRankings = indicators.map((indicator) => {
-                  const actual = selectedEmp[indicator.key] !== null && selectedEmp[indicator.key] !== undefined ? parseFloat(String(selectedEmp[indicator.key])) : null;
-                  const target = selectedEmp.targets?.[indicator.key];
-                  const weight = selectedEmp.weights?.[indicator.key] || 0;
-                  const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
-                  const score = actual !== null && target !== null && target !== 0
-                    ? Math.max(0, Math.min((actual / target) * weight, weight))
-                    : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
-
-                  // 计算该指标在所有员工中的排名
-                  const allRankings = employees
-                    .map((emp) => {
-                      const empActual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
-                      const empTarget = emp.targets?.[indicator.key];
-                      const empCompletion = empActual !== null && empTarget !== null && empTarget !== 0 ? (empActual / empTarget) * 100 : 0;
-                      return { emp, completion: empCompletion };
-                    })
-                    .sort((a, b) => b.completion - a.completion);
-
-                  const rank = allRankings.findIndex(r => r.emp.id === selectedEmp.id) + 1;
-
-                  return {
-                    indicator,
-                    actual,
-                    target,
-                    weight,
-                    completion,
-                    score,
-                    rank,
-                    totalEmployees: employees.length,
-                  };
-                });
-
-                // 按完成度排序
-                const sortedRankings = indicatorRankings.sort((a, b) => b.completion - a.completion);
-
-                return (
-                  <div>
-                    <h4 className="font-semibold text-foreground mb-4">
-                      {selectedEmp.name} - 各项业务完成度排名
-                    </h4>
-                    <div className="space-y-3">
-                      {sortedRankings.map((item, index) => (
-                        <div
-                          key={item.indicator.key}
-                          className="flex items-center justify-between p-4 bg-secondary rounded border border-border"
-                        >
-                          <div className="flex items-center gap-3 flex-1">
-                            <span className="font-bold text-accent text-lg w-8">{index + 1}</span>
-                            <div>
-                              <div className="text-foreground font-medium">
-                                {item.indicator.name} ({item.indicator.unit})
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                实际值: {item.actual} | 目标值: {item.target !== null && item.target !== undefined ? item.target : '不考核'} | 全员排名: {item.rank}/{item.totalEmployees}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">完成度</div>
-                              <div className="text-lg font-bold text-accent">
-                                {item.completion.toFixed(1)}%
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm text-muted-foreground">得分</div>
-                              <div className="text-lg font-bold text-accent">
-                                {item.score.toFixed(2)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </Card>
-
-            {/* PDF 导出内容 */}
-            <div ref={pdfRef} className="bg-white p-8 hidden" style={{ color: '#000', fontSize: '12px' }}>
-              <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px', textAlign: 'center' }}>
-                KPI 成绩统计报告
-              </h1>
-              <p style={{ marginBottom: '20px', color: '#666', textAlign: 'center' }}>
-                生成时间: {new Date().toLocaleString()}
-              </p>
-
-              {/* 1. 员工总排名 */}
-              <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px', pageBreakBefore: 'auto' }}>
-                1. 员工总排名
-              </h2>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '11px' }}>
+          <TabsContent value="input" className="mt-6">
+            <Card className="p-6 overflow-x-auto">
+              <table className="w-full border-collapse">
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #000' }}>
-                    <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
-                    <th style={{ padding: '8px', textAlign: 'left' }}>员工名称</th>
-                    <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
-                    <th style={{ padding: '8px', textAlign: 'right' }}>满分</th>
-                    <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left p-3 font-semibold text-slate-700 sticky left-0 bg-white z-10">员工名称</th>
+                    {indicators.map(ind => (
+                      <th key={ind.id} className="p-3 text-center border-l border-slate-100 min-w-[300px]">
+                        <div className="flex flex-col gap-1">
+                          <Input 
+                            value={ind.name} 
+                            onChange={(e) => {
+                              const newName = e.target.value;
+                              setIndicators(prev => prev.map(i => i.id === ind.id ? { ...i, name: newName } : i));
+                            }}
+                            className="text-center font-bold border-none hover:bg-slate-50 focus:bg-white"
+                          />
+                          <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+                            单位: 
+                            <Input 
+                              value={ind.unit} 
+                              onChange={(e) => {
+                                const newUnit = e.target.value;
+                                setIndicators(prev => prev.map(i => i.id === ind.id ? { ...i, unit: newUnit } : i));
+                              }}
+                              className="w-16 h-6 text-center p-0 border-none hover:bg-slate-50 focus:bg-white"
+                            />
+                          </div>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="p-3 text-right font-semibold text-slate-700 border-l border-slate-100">总分</th>
+                  </tr>
+                  <tr className="bg-slate-50 text-[10px] text-slate-400 uppercase tracking-wider">
+                    <th className="p-2 sticky left-0 bg-slate-50 z-10"></th>
+                    {indicators.map(ind => (
+                      <th key={`${ind.id}-sub`} className="p-2 border-l border-slate-100">
+                        <div className="grid grid-cols-3 gap-1 px-2">
+                          <span>实际值</span>
+                          <span>目标值</span>
+                          <span>权重%</span>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="p-2 border-l border-slate-100"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {employees
-                    .map((emp) => ({
-                      ...emp,
-                      score: getEmployeeTotalScore(emp.id),
-                      maxScore: getEmployeeTotalMaxScore(emp.id),
-                    }))
-                    .sort((a, b) => b.score - a.score)
-                    .map((emp, index) => {
-                      const percentage = emp.maxScore > 0 ? (emp.score / emp.maxScore) * 100 : 0;
-                      return (
-                        <tr key={emp.id} style={{ borderBottom: '1px solid #ddd' }}>
-                          <td style={{ padding: '8px' }}>{index + 1}</td>
-                          <td style={{ padding: '8px' }}>{emp.name}</td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>{emp.score.toFixed(2)}</td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>{emp.maxScore.toFixed(2)}</td>
-                          <td style={{ padding: '8px', textAlign: 'right' }}>{percentage.toFixed(1)}%</td>
-                        </tr>
-                      );
-                    })}
+                  {employees.map(emp => (
+                    <tr key={emp.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-medium text-slate-700 sticky left-0 bg-white z-10 border-r border-slate-100">
+                        {emp.name}
+                      </td>
+                      {indicators.map(ind => (
+                        <td key={`${emp.id}-${ind.id}`} className="p-2 border-l border-slate-100">
+                          <div className="grid grid-cols-3 gap-2">
+                            <Input 
+                              type="number"
+                              value={emp.values[ind.id] ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, values: { ...e.values, [ind.id]: val } } : e));
+                              }}
+                              className="h-8 text-center"
+                            />
+                            <Input 
+                              type="number"
+                              value={emp.targets[ind.id] ?? ind.defaultTarget ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, targets: { ...e.targets, [ind.id]: val } } : e));
+                              }}
+                              className="h-8 text-center bg-slate-50"
+                            />
+                            <Input 
+                              type="number"
+                              value={emp.weights[ind.id] ?? ind.defaultWeight ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, weights: { ...e.weights, [ind.id]: val } } : e));
+                              }}
+                              className="h-8 text-center bg-slate-50"
+                            />
+                          </div>
+                        </td>
+                      ))}
+                      <td className="p-3 text-right font-bold text-blue-700">
+                        {getEmployeeTotalScore(emp)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-
-              {/* 2. 每位员工的详细数据 */}
-              {employees.map((emp) => (
-                <div key={emp.id} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
-                    2. {emp.name} - 详细成绩
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #000' }}>
-                        <th style={{ padding: '8px', textAlign: 'left' }}>指标名称</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>权重</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {getAllIndicators().map((indicator) => {
-                        const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
-                        const target = emp.targets?.[indicator.key];
-                        const weight = emp.weights?.[indicator.key] || 0;
-                        const score = actual !== null && target !== null && target !== 0
-                          ? Math.max(0, Math.min((actual / target) * weight, weight))
-                          : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
-                        const completionNum = actual !== null && target !== null && target !== 0
-                          ? (actual / target) * 100
-                          : null;
-                        const completion = completionNum !== null ? completionNum.toFixed(1) : '—';
-                        
-                        // 计算进度条宽度
-                        const progressWidth = completionNum !== null ? Math.max(0, Math.min(completionNum, 100)) : 0;
-
-                        return (
-                          <tr key={indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
-                            <td style={{ padding: '8px' }}>{indicator.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{actual !== null ? `${actual}${indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{target !== null && target !== undefined ? `${target}${indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{weight.toFixed(2)}%</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{score.toFixed(2)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
-                                <div className="visual-only" style={{ width: '60px', height: '8px', backgroundColor: '#eee', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
-                                  <div style={{ width: `${progressWidth}%`, height: '100%', backgroundColor: '#1e40af' }}></div>
-                                </div>
-                                <span>{completion}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div style={{ marginBottom: '10px' }}>
-                    <strong>总分: {getEmployeeTotalScore(emp.id).toFixed(2)} / {getEmployeeTotalMaxScore(emp.id).toFixed(2)}</strong>
-                  </div>
-                </div>
-              ))}
-
-              {/* 3. 每项指标的排名 */}
-              {getAllIndicators().map((indicator) => (
-                <div key={indicator.key} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
-                    3. {indicator.name} ({indicator.unit}) - 排名
-                  </h3>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #000' }}>
-                        <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
-                        <th style={{ padding: '8px', textAlign: 'left' }}>员工名称</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {employees
-                        .map((emp) => {
-                          const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
-                          const target = emp.targets?.[indicator.key];
-                          const weight = emp.weights?.[indicator.key] || 0;
-                          const score = actual !== null && target !== null && target !== 0
-                            ? Math.max(0, Math.min((actual / target) * weight, weight))
-                            : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
-                          const completion = actual !== null && target !== null && target !== 0
-                            ? ((actual / target) * 100)
-                            : 0;
-                          return { emp, actual, target, weight, score, completion };
-                        })
-                        .sort((a, b) => b.completion - a.completion)
-                        .map((item, index) => (
-                          <tr key={item.emp.id} style={{ borderBottom: '1px solid #ddd' }}>
-                            <td style={{ padding: '8px' }}>{index + 1}</td>
-                            <td style={{ padding: '8px' }}>{item.emp.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual !== null ? `${item.actual}${indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target !== null && item.target !== undefined ? `${item.target}${indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-
-              {/* 4. 员工各项业务完成度排名 */}
-              {employees.map((emp) => {
-                const indicators = getAllIndicators();
-                const indicatorRankings = indicators.map((indicator) => {
-                  const actual = emp[indicator.key] !== null && emp[indicator.key] !== undefined ? parseFloat(String(emp[indicator.key])) : null;
-                  const target = emp.targets?.[indicator.key];
-                  const weight = emp.weights?.[indicator.key] || 0;
-                  const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
-                  const score = actual !== null && target !== null && target !== 0
-                    ? Math.max(0, Math.min((actual / target) * weight, weight))
-                    : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
-
-                  const allRankings = employees
-                    .map((e) => {
-                      const eActualValue = e[indicator.key];
-                      const eActual = eActualValue !== undefined && eActualValue !== null ? Number(eActualValue) : 0;
-                      const eTarget = e.targets?.[indicator.key];
-                      const eCompletion = eTarget !== null && eTarget !== 0 ? (eActual / eTarget) * 100 : 0;
-                      return { emp: e, completion: eCompletion };
-                    })
-                    .sort((a, b) => b.completion - a.completion);
-
-                  const rank = allRankings.findIndex(r => r.emp.id === emp.id) + 1;
-
-                  return {
-                    indicator,
-                    actual,
-                    target,
-                    weight,
-                    completion,
-                    score,
-                    rank,
-                    totalEmployees: employees.length,
-                  };
-                });
-
-                const sortedRankings = indicatorRankings.sort((a, b) => b.completion - a.completion);
-
-                return (
-                  <div key={emp.id} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
-                    <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', marginTop: '20px' }}>
-                      4. {emp.name} - 各项业务完成度排名
-                    </h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid #000' }}>
-                          <th style={{ padding: '8px', textAlign: 'left' }}>排名</th>
-                          <th style={{ padding: '8px', textAlign: 'left' }}>业务项目</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>实际值</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>目标值</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>完成度</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>得分</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>全员排名</th>
-                        </tr>
-	                      </thead>
-	                      <tbody>
-	                           {sortedRankings.map((item, index) => (                     <tr key={item.indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
-                            <td style={{ padding: '8px' }}>{index + 1}</td>
-                            <td style={{ padding: '8px' }}>{item.indicator.name}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.actual !== null ? `${item.actual}${item.indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.target !== null && item.target !== undefined ? `${item.target}${item.indicator.unit}` : '—'}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.completion.toFixed(1)}%</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.score.toFixed(2)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{item.rank}/{item.totalEmployees}</td>
-                          </tr>
-                        ))}    </tbody>
-                    </table>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 排名（带进度条） */}
-            <Card className="p-6">
-              <h3 className="text-xl font-bold text-foreground mb-4">排名</h3>
-              <div className="space-y-4">
-                {employees
-                  .map((emp) => ({
-                    ...emp,
-                    score: getEmployeeTotalScore(emp.id),
-                    maxScore: getEmployeeTotalMaxScore(emp.id),
-                  }))
-                  .sort((a, b) => b.score - a.score)
-                  .map((emp, index) => {
-                    const percentage = emp.maxScore > 0 ? (emp.score / emp.maxScore) * 100 : 0;
-                    return (
-                      <div key={emp.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="text-lg font-bold text-primary w-8">#{index + 1}</span>
-                            <span className="font-medium text-foreground">{emp.name}</span>
-                          </div>
-                          <span className="text-lg font-bold text-accent">{emp.score.toFixed(2)} / {emp.maxScore.toFixed(2)}</span>
-                        </div>
-                        <div className="w-full bg-secondary rounded-full h-3 overflow-hidden">
-                          <div
-                            className="bg-gradient-to-r from-blue-500 to-cyan-500 h-full rounded-full transition-all duration-300"
-                            style={{ width: `${Math.min(percentage, 100)}%` }}
-                          ></div>
-                        </div>
-                        <div className="text-xs text-muted-foreground text-right">
-                          完成度: {percentage.toFixed(1)}%
-                        </div>
-                      </div>
-                    );
-                  })}
+              <div className="mt-4 flex justify-between items-center">
+                <Button onClick={() => {
+                  const newId = `kpi_${indicators.length + 1}`;
+                  setIndicators([...indicators, { id: newId, name: `新指标${indicators.length + 1}`, unit: '个', defaultTarget: 100, defaultWeight: 10 }]);
+                }} variant="ghost" className="text-blue-600 gap-2">
+                  <Plus className="w-4 h-4" /> 添加指标列组
+                </Button>
+                <Button onClick={() => {
+                  const newId = String(employees.length + 1);
+                  setEmployees([...employees, { id: newId, name: `新员工${employees.length + 1}`, values: {}, targets: {}, weights: {}, units: {} }]);
+                }} variant="ghost" className="text-blue-600 gap-2">
+                  <Plus className="w-4 h-4" /> 添加员工行
+                </Button>
               </div>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="stats" className="mt-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5 text-blue-600" /> 单项指标排名
+                  </h3>
+                  <select 
+                    value={selectedIndicatorForRanking ?? ''} 
+                    onChange={(e) => setSelectedIndicatorForRanking(e.target.value)}
+                    className="text-sm border rounded p-1"
+                  >
+                    {indicators.map(ind => <option key={ind.id} value={ind.id}>{ind.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-3">
+                  {employees
+                    .map(emp => {
+                      const indId = selectedIndicatorForRanking!;
+                      const actual = emp.values[indId] ?? 0;
+                      const target = emp.targets[indId] ?? indicators.find(i => i.id === indId)?.defaultTarget ?? 1;
+                      const weight = emp.weights[indId] ?? indicators.find(i => i.id === indId)?.defaultWeight ?? 0;
+                      const score = calculateScore(actual, target, weight);
+                      const completion = target ? (actual / target) : 0;
+                      return { name: emp.name, score, completion };
+                    })
+                    .sort((a, b) => b.score - a.score || b.completion - a.completion)
+                    .map((item, idx) => (
+                      <div key={item.name} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                        <div className="flex items-center gap-3">
+                          <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx < 3 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                            {idx + 1}
+                          </span>
+                          <span className="font-medium">{item.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-blue-700">{item.score} 分</div>
+                          <div className="text-[10px] text-slate-400">完成度: {(item.completion * 100).toFixed(2)}%</div>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <List className="w-5 h-5 text-blue-600" /> 总分全员排名
+                </h3>
+                <div className="space-y-3">
+                  {employees
+                    .map(emp => ({ name: emp.name, total: getEmployeeTotalScore(emp) }))
+                    .sort((a, b) => b.total - a.total)
+                    .map((item, idx) => (
+                      <div key={item.name} className="flex items-center justify-between p-2 bg-slate-50 rounded border-l-4 border-blue-600">
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-400 font-mono">#{String(idx + 1).padStart(2, '0')}</span>
+                          <span className="font-medium">{item.name}</span>
+                        </div>
+                        <span className="font-bold text-lg text-slate-900">{item.total}</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              </Card>
+            </div>
+
+            {/* 隐藏的 PDF 导出区域 */}
+            <div className="hidden">
+              <div ref={pdfRef} className="p-8 bg-white">
+                <h1 className="text-2xl font-bold text-center mb-8">KPI 绩效考核报告</h1>
+                <div className="space-y-8">
+                  {employees.map(emp => (
+                    <div key={emp.id} className="page-break-after-always">
+                      <h2 className="text-xl font-bold border-b-2 border-blue-600 pb-2 mb-4">{emp.name} - 个人成绩单</h2>
+                      <table className="w-full border-collapse mb-4">
+                        <thead>
+                          <tr className="bg-slate-100">
+                            <th className="border p-2 text-left">指标名称</th>
+                            <th className="border p-2 text-center">实际值</th>
+                            <th className="border p-2 text-center">目标值</th>
+                            <th className="border p-2 text-center">权重%</th>
+                            <th className="border p-2 text-center">得分</th>
+                            <th className="border p-2 text-center visual-only">进度</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {indicators.map(ind => {
+                            const actual = emp.values[ind.id] ?? 0;
+                            const target = emp.targets[ind.id] ?? ind.defaultTarget ?? 0;
+                            const weight = emp.weights[ind.id] ?? ind.defaultWeight;
+                            const score = calculateScore(actual, target, weight);
+                            const unit = emp.units[ind.id] ?? ind.unit;
+                            const completion = target ? Math.max(0, Math.min(actual / target, 1)) : 0;
+                            return (
+                              <tr key={ind.id}>
+                                <td className="border p-2">{ind.name}</td>
+                                <td className="border p-2 text-center">{actual} {unit}</td>
+                                <td className="border p-2 text-center">{target} {unit}</td>
+                                <td className="border p-2 text-center">{weight}%</td>
+                                <td className="border p-2 text-center font-bold">{score}</td>
+                                <td className="border p-2 text-center visual-only">
+                                  <div className="progress-bar">
+                                    <div className="progress-fill" style={{ width: `${completion * 100}%` }}></div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="bg-slate-50 font-bold">
+                            <td colSpan={4} className="border p-2 text-right">总计得分：</td>
+                            <td className="border p-2 text-center text-blue-700 text-lg">{getEmployeeTotalScore(emp)}</td>
+                            <td className="border p-2 visual-only"></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
