@@ -38,7 +38,9 @@ interface EmployeeData {
   weights: { [key: string]: number };
   customIndicators?: { [key: string]: KPIIndicator };
   enabledIndicators?: { [key: string]: boolean };
-  [key: string]: string | number | null | { [key: string]: number | null } | { [key: string]: number } | { [key: string]: KPIIndicator } | { [key: string]: boolean } | undefined;
+  customIndicatorNames?: { [key: string]: string };
+  customIndicatorUnits?: { [key: string]: string };
+  [key: string]: any;
 }
 
 interface EmployeeKPI {
@@ -304,10 +306,16 @@ export default function Home() {
     if (kpiStructure) {
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
+          const key = `${category}_${indicator.name}`;
+          // 优先使用第一个员工的自定义名称和单位（作为全局同步源）
+          const firstEmp = employees[0];
+          const customName = (firstEmp?.customIndicatorNames as any)?.[key] || indicator.name;
+          const customUnit = (firstEmp?.customIndicatorUnits as any)?.[key] || indicator.unit || '';
+          
           indicators.push({
-            key: `${category}_${indicator.name}`,
-            name: indicator.name,
-            unit: indicator.unit || '',
+            key,
+            name: customName,
+            unit: customUnit,
           });
         });
       });
@@ -410,6 +418,32 @@ export default function Home() {
             }
           : emp
       )
+    );
+  };
+
+  // 处理指标名称变更（同步到所有员工）
+  const handleIndicatorNameChange = (indicatorKey: string, newName: string) => {
+    setEmployees(
+      employees.map((emp) => ({
+        ...emp,
+        customIndicatorNames: {
+          ...((emp.customIndicatorNames as object) || {}),
+          [indicatorKey]: newName,
+        },
+      }))
+    );
+  };
+
+  // 处理指标单位变更（同步到所有员工）
+  const handleIndicatorUnitChange = (indicatorKey: string, newUnit: string) => {
+    setEmployees(
+      employees.map((emp) => ({
+        ...emp,
+        customIndicatorUnits: {
+          ...((emp.customIndicatorUnits as object) || {}),
+          [indicatorKey]: newUnit,
+        },
+      }))
     );
   };
 
@@ -567,12 +601,16 @@ export default function Home() {
     
     // 表头：员工名称 + 各指标(实际值、目标值、权重%、得分)
     const headers = ['员工名称'];
+    const allIndicators = getAllIndicators();
     Object.entries(kpiStructure).forEach(([category, categoryData]) => {
       categoryData.指标.forEach((indicator) => {
-        headers.push(`${category}_${indicator.name}(实际)`);
-        headers.push(`${category}_${indicator.name}(目标)`);
-        headers.push(`${category}_${indicator.name}(权重%)`);
-        headers.push(`${category}_${indicator.name}(得分)`);
+        const key = `${category}_${indicator.name}`;
+        const currentIndicator = allIndicators.find(i => i.key === key) || indicator;
+        headers.push(`${currentIndicator.name}(实际)`);
+        headers.push(`${currentIndicator.name}(目标)`);
+        headers.push(`${currentIndicator.name}(权重%)`);
+        headers.push(`${currentIndicator.name}(得分)`);
+        headers.push(`${currentIndicator.name}(单位)`); // 导出单位以便导入时同步
       });
     });
     headers.push('总分');
@@ -585,6 +623,7 @@ export default function Home() {
       Object.entries(kpiStructure).forEach(([category, categoryData]) => {
         categoryData.指标.forEach((indicator) => {
           const key = `${category}_${indicator.name}`;
+          const currentIndicator = allIndicators.find(i => i.key === key) || indicator;
           const actual = kpi[key]?.actual || 0;
           const target = kpi[key]?.target ?? '';
           const weight = emp.weights[key] ?? 0;
@@ -594,6 +633,7 @@ export default function Home() {
           row.push(typeof target === 'number' ? Math.round(target * 10000) / 10000 : target);
           row.push(typeof weight === 'number' ? Math.round(weight * 10000) / 10000 : weight);
           row.push(typeof score === 'number' ? Math.round(score * 10000) / 10000 : score);
+          row.push(currentIndicator.unit);
         });
       });
       row.push(getEmployeeTotalScore(emp.id));
@@ -672,25 +712,33 @@ export default function Home() {
               enabledIndicators: {}
             };
           }
-          
-          // 填充指标数据
+                    // 填充指标数据
           Object.entries(kpiStructure).forEach(([category, categoryData]) => {
             categoryData.指标.forEach((indicator) => {
               const key = `${category}_${indicator.name}`;
               
+              // 尝试匹配表头（支持原始名称和自定义名称）
+              const findHeaderIndex = (suffix: string) => {
+                // 1. 尝试匹配原始名称
+                let idx = headers.indexOf(`${category}_${indicator.name}${suffix}`);
+                if (idx !== -1) return idx;
+                
+                // 2. 尝试模糊匹配（只要包含后缀且在合适位置）
+                return headers.findIndex((h: string) => h && h.endsWith(suffix));
+              };
+
               // 导入实际值
-              const actualHeaderIndex = headers.indexOf(`${category}_${indicator.name}(实际)`);
+              const actualHeaderIndex = findHeaderIndex('(实际)');
               if (actualHeaderIndex !== -1 && row[actualHeaderIndex] !== undefined && row[actualHeaderIndex] !== null) {
                 const value = row[actualHeaderIndex];
                 if (value !== '(不考核)' && value !== '') {
-                  // 最多保留四位小数
                   const parsed = parseFloat(value);
                   employee[key] = isNaN(parsed) ? null : Math.round(parsed * 10000) / 10000;
                 }
               }
               
               // 导入目标值
-              const targetHeaderIndex = headers.indexOf(`${category}_${indicator.name}(目标)`);
+              const targetHeaderIndex = findHeaderIndex('(目标)');
               if (targetHeaderIndex !== -1 && row[targetHeaderIndex] !== undefined && row[targetHeaderIndex] !== null) {
                 const value = row[targetHeaderIndex];
                 if (value !== '' && value !== undefined) {
@@ -699,21 +747,38 @@ export default function Home() {
                 }
               }
               
-              // 导入权重 - 严格根据表格中的权重数据进行导入
-              const weightHeaderIndex = headers.indexOf(`${category}_${indicator.name}(权重%)`);
+              // 导入权重
+              const weightHeaderIndex = findHeaderIndex('(权重%)');
               if (weightHeaderIndex !== -1 && row[weightHeaderIndex] !== undefined && row[weightHeaderIndex] !== null) {
                 const value = row[weightHeaderIndex];
                 if (value !== '' && value !== undefined) {
                   const parsed = parseFloat(value);
                   employee.weights[key] = isNaN(parsed) ? 0 : Math.round(parsed * 10000) / 10000;
                 }
-              } else if (employee.weights[key] === undefined) {
+              }
+
+              // 导入名称和单位（同步到 customIndicatorNames/Units）
+              const nameHeader = headers.find((h: string) => h && h.endsWith('(实际)'));
+              if (nameHeader) {
+                const customName = nameHeader.replace('(实际)', '');
+                if (!employee.customIndicatorNames) employee.customIndicatorNames = {};
+                (employee.customIndicatorNames as any)[key] = customName;
+              }
+
+              const unitHeaderIndex = findHeaderIndex('(单位)');
+              if (unitHeaderIndex !== -1 && row[unitHeaderIndex]) {
+                if (!employee.customIndicatorUnits) employee.customIndicatorUnits = {};
+                (employee.customIndicatorUnits as any)[key] = String(row[unitHeaderIndex]);
+              }
+
+              if (employee.weights[key] === undefined) {
                 // 如果表格中没有权重且员工原本也没有该权重，则使用面板默认权重
                 employee.weights[key] = indicator.weight * 100;
               }
               
               // 设置启用状态
-              employee.enabledIndicators![key] = true;
+              if (!employee.enabledIndicators) employee.enabledIndicators = {};
+              employee.enabledIndicators[key] = true;
             });
           });
           
@@ -1101,11 +1166,16 @@ export default function Home() {
                           const target = kpi[key]?.target;
                           const weightPercentage = employee.weights[key] ?? indicator.weight * 100;
 
-                          return (
-                            <div key={key} className="bg-secondary p-4 rounded-lg">
-                              <label className="block text-sm font-medium text-foreground mb-2">
-                                {indicator.name}
-                              </label>
+	                          const currentIndicator = getAllIndicators().find(i => i.key === key) || { name: indicator.name, unit: indicator.unit };
+	                          return (
+	                            <div key={key} className="bg-secondary p-4 rounded-lg">
+	                              <div className="flex justify-between items-start mb-2">
+	                                <Input
+	                                  className="text-sm font-medium bg-transparent border-none p-0 h-auto focus-visible:ring-0 w-full"
+	                                  value={currentIndicator.name}
+	                                  onChange={(e) => handleIndicatorNameChange(key, e.target.value)}
+	                                />
+	                              </div>
                               <div className="flex gap-2 mb-2">
                                 <Input
                                   type="number"
@@ -1117,9 +1187,11 @@ export default function Home() {
                                   }
                                   className="flex-1"
                                 />
-                                <span className="text-sm text-muted-foreground py-2 px-2 bg-background rounded">
-                                  {indicator.unit}
-                                </span>
+	                                <Input
+	                                  className="text-sm text-muted-foreground py-1 px-2 bg-background rounded w-16 h-auto border-none text-center"
+	                                  value={currentIndicator.unit}
+	                                  onChange={(e) => handleIndicatorUnitChange(key, e.target.value)}
+	                                />
                               </div>
 
                               {/* 目标值编辑 */}
@@ -1136,9 +1208,9 @@ export default function Home() {
                                       }
                                       className="flex-1 text-xs"
                                     />
-                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
-                                      {indicator.unit}
-                                    </span>
+	                                    <span className="text-xs text-muted-foreground py-2 px-2 bg-background rounded">
+	                                      {currentIndicator.unit}
+	                                    </span>
                                   </div>
                                 </div>
                               ) : null}
