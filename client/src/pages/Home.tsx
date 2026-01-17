@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List, Save, FileText, BarChart2, ChevronDown } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List, Save, FileText, BarChart2, ChevronDown, Trophy, User, LayoutDashboard } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -33,8 +33,8 @@ interface EmployeeData {
 }
 
 // --- LocalStorage 工具函数 ---
-const STORAGE_KEY = 'kpi_dashboard_dynamic_data';
-const INDICATORS_KEY = 'kpi_dashboard_indicators';
+const STORAGE_KEY = 'kpi_dashboard_dynamic_data_v2';
+const INDICATORS_KEY = 'kpi_dashboard_indicators_v2';
 
 const saveToLocalStorage = (employees: EmployeeData[], indicators: KPIIndicator[]) => {
   try {
@@ -88,8 +88,8 @@ export default function Home() {
     } else {
       // 默认初始数据
       const defaultIndicators: KPIIndicator[] = [
-        { id: 'kpi_1', name: '指标1', unit: '个', defaultTarget: 100, defaultWeight: 20 },
-        { id: 'kpi_2', name: '指标2', unit: '元', defaultTarget: 1000, defaultWeight: 30 },
+        { id: 'kpi_1', name: '新开户净新增资产', unit: '亿', defaultTarget: 10, defaultWeight: 20 },
+        { id: 'kpi_2', name: '新增有效户', unit: '户', defaultTarget: 100, defaultWeight: 30 },
       ];
       const defaultEmployees: EmployeeData[] = Array.from({ length: 5 }, (_, i) => ({
         id: String(i + 1),
@@ -131,6 +131,14 @@ export default function Home() {
       total += calculateScore(actual, target, weight);
     });
     return Math.round(total * 10000) / 10000;
+  };
+
+  const getEmployeeTotalMaxScore = (emp: EmployeeData) => {
+    let total = 0;
+    indicators.forEach(ind => {
+      total += emp.weights[ind.id] ?? ind.defaultWeight;
+    });
+    return total;
   };
 
   // --- 导入导出逻辑 (5列一组) ---
@@ -267,6 +275,7 @@ export default function Home() {
               .progress-bar { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; width: 100px; display: inline-block; }
               .progress-fill { height: 100%; background: #1e40af; }
               .page-break { page-break-after: always; }
+              .visual-only { display: ${mode === 'visual' ? 'table-cell' : 'none'}; }
             }
           </style>
         </head>
@@ -296,51 +305,68 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* 顶部标题栏 */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">KPI 绩效管理系统</h1>
-            <p className="text-slate-500">动态指标架构 · 5列一组自由增减</p>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* 顶部导航栏 - 还原上一版 UI */}
+      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-700 p-2 rounded-lg">
+              <LayoutDashboard className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">KPI 绩效管理系统</h1>
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">动态指标架构 · 5列一组自由增减</p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2">
+            <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="gap-2 border-slate-200 hover:bg-slate-50">
               <Upload className="w-4 h-4" /> 导入数据
             </Button>
             <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".xlsx,.xls" />
-            <Button onClick={handleExport} variant="outline" className="gap-2">
+            <Button onClick={handleExport} variant="outline" className="gap-2 border-slate-200 hover:bg-slate-50">
               <Download className="w-4 h-4" /> 导出数据
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="gap-2 bg-blue-700 hover:bg-blue-800">
+                <Button className="gap-2 bg-blue-700 hover:bg-blue-800 shadow-md">
                   <FileText className="w-4 h-4" /> 导出 PDF <ChevronDown className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleExportPDF('data')}>纯数据版本</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportPDF('visual')}>带可视化版本</DropdownMenuItem>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => handleExportPDF('data')} className="cursor-pointer">
+                  <FileText className="w-4 h-4 mr-2" /> 纯数据版本
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPDF('visual')} className="cursor-pointer">
+                  <BarChart2 className="w-4 h-4 mr-2" /> 带可视化版本
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
+      </header>
 
+      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-md bg-white border">
-            <TabsTrigger value="input" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">数据输入</TabsTrigger>
-            <TabsTrigger value="stats" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">结果统计</TabsTrigger>
+          <TabsList className="bg-white border border-slate-200 p-1 h-12 mb-6 shadow-sm">
+            <TabsTrigger value="input" className="px-8 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none font-semibold">
+              数据输入
+            </TabsTrigger>
+            <TabsTrigger value="stats" className="px-8 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none font-semibold">
+              结果统计
+            </TabsTrigger>
           </TabsList>
 
-          {/* 数据输入标签页 - 还原上一版卡片式设计 */}
-          <TabsContent value="input" className="mt-6 space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-slate-800">员工绩效明细</h2>
+          {/* 数据输入标签页 */}
+          <TabsContent value="input" className="space-y-6 outline-none">
+            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <User className="w-5 h-5 text-blue-600" /> 员工绩效明细
+              </h2>
               <div className="flex gap-2">
-                <Button onClick={addIndicator} variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50">
+                <Button onClick={addIndicator} variant="outline" size="sm" className="text-blue-600 border-blue-100 hover:bg-blue-50">
                   <Plus className="w-4 h-4 mr-1" /> 添加指标
                 </Button>
-                <Button onClick={addEmployee} variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-50">
+                <Button onClick={addEmployee} variant="outline" size="sm" className="text-blue-600 border-blue-100 hover:bg-blue-50">
                   <Plus className="w-4 h-4 mr-1" /> 添加员工
                 </Button>
               </div>
@@ -349,28 +375,32 @@ export default function Home() {
             <div className="space-y-6">
               {employees.map((employee) => {
                 const totalScore = getEmployeeTotalScore(employee);
+                const totalMaxScore = getEmployeeTotalMaxScore(employee);
                 return (
-                  <Card key={employee.id} className="p-6 border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                  <Card key={employee.id} className="p-6 border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl bg-white overflow-hidden">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-6 border-b border-slate-100">
                       <div className="flex-1 w-full md:w-auto">
-                        <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">员工名称</label>
+                        <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-widest">员工名称</label>
                         <Input
                           value={employee.name}
                           onChange={(e) => setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, name: e.target.value } : emp))}
-                          className="max-w-xs font-semibold text-lg border-none hover:bg-slate-50 focus:bg-white p-0 h-auto"
+                          className="max-w-xs font-bold text-xl border-none hover:bg-slate-50 focus:bg-white p-0 h-auto focus-visible:ring-0"
                         />
                       </div>
-                      <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-8">
                         <div className="text-right">
-                          <div className="text-xs text-slate-400 uppercase tracking-wider">当前总分</div>
-                          <div className="text-3xl font-bold text-blue-700">{totalScore.toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">当前总分</div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-black text-blue-700">{totalScore.toFixed(2)}</span>
+                            <span className="text-xs text-slate-400 font-bold">/ {totalMaxScore.toFixed(0)}</span>
+                          </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex gap-2">
                           <Button
                             onClick={() => setEditingMode(editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? null : { employeeId: employee.id, mode: 'targets' })}
                             variant={editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? "default" : "outline"}
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className={`h-10 w-10 p-0 rounded-lg transition-colors ${editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' ? 'bg-blue-600' : 'border-slate-200 text-slate-600'}`}
                             title="编辑目标值"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -379,7 +409,7 @@ export default function Home() {
                             onClick={() => setEditingMode(editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? null : { employeeId: employee.id, mode: 'weights' })}
                             variant={editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? "default" : "outline"}
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className={`h-10 w-10 p-0 rounded-lg transition-colors ${editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' ? 'bg-blue-600' : 'border-slate-200 text-slate-600'}`}
                             title="编辑权重"
                           >
                             <Settings className="w-4 h-4" />
@@ -388,7 +418,7 @@ export default function Home() {
                             onClick={() => removeEmployee(employee.id)}
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0 text-slate-300 hover:text-red-500"
+                            className="h-10 w-10 p-0 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -396,7 +426,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {indicators.map(ind => {
                         const actual = employee.values[ind.id] ?? 0;
                         const target = employee.targets[ind.id] ?? ind.defaultTarget ?? 0;
@@ -406,33 +436,33 @@ export default function Home() {
                         const completion = target ? Math.max(0, Math.min(actual / target, 1)) : 0;
 
                         return (
-                          <div key={ind.id} className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
+                          <div key={ind.id} className="p-5 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-4 hover:bg-white hover:shadow-sm transition-all border-l-4 border-l-blue-500">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <Input 
                                   value={ind.name}
                                   onChange={(e) => setIndicators(prev => prev.map(i => i.id === ind.id ? { ...i, name: e.target.value } : i))}
-                                  className="text-sm font-medium border-none bg-transparent p-0 h-auto focus:ring-0"
+                                  className="text-sm font-bold border-none bg-transparent p-0 h-auto focus:ring-0 text-slate-700"
                                 />
                                 <div className="flex items-center gap-1 mt-1">
-                                  <span className="text-[10px] text-slate-400">单位:</span>
+                                  <span className="text-[10px] text-slate-400 font-bold">单位:</span>
                                   <Input 
                                     value={ind.unit}
                                     onChange={(e) => setIndicators(prev => prev.map(i => i.id === ind.id ? { ...i, unit: e.target.value } : i))}
-                                    className="text-[10px] w-12 border-none bg-transparent p-0 h-auto focus:ring-0 text-slate-500"
+                                    className="text-[10px] w-12 border-none bg-transparent p-0 h-auto focus:ring-0 text-slate-500 font-bold"
                                   />
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-sm font-bold text-slate-700">{score.toFixed(2)}</div>
-                                <div className="text-[10px] text-slate-400">得分</div>
+                                <div className="text-lg font-black text-blue-600">{score.toFixed(2)}</div>
+                                <div className="text-[9px] text-slate-400 font-bold uppercase">得分</div>
                               </div>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                               <div className="flex items-center gap-2">
                                 <div className="flex-1">
-                                  <div className="text-[10px] text-slate-400 mb-1">实际值</div>
+                                  <div className="text-[9px] text-slate-400 font-bold mb-1 uppercase">实际值</div>
                                   <Input
                                     type="number"
                                     value={employee.values[ind.id] ?? ''}
@@ -440,12 +470,12 @@ export default function Home() {
                                       const val = e.target.value === '' ? null : parseFloat(e.target.value);
                                       setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, values: { ...emp.values, [ind.id]: val } } : emp));
                                     }}
-                                    className="h-7 text-xs"
+                                    className="h-9 text-sm font-bold rounded-lg border-slate-200 focus:border-blue-500"
                                   />
                                 </div>
                                 {editingMode?.employeeId === employee.id && editingMode?.mode === 'targets' && (
                                   <div className="flex-1">
-                                    <div className="text-[10px] text-blue-500 mb-1">目标值</div>
+                                    <div className="text-[9px] text-blue-500 font-bold mb-1 uppercase">目标值</div>
                                     <Input
                                       type="number"
                                       value={employee.targets[ind.id] ?? ind.defaultTarget ?? ''}
@@ -453,13 +483,13 @@ export default function Home() {
                                         const val = e.target.value === '' ? null : parseFloat(e.target.value);
                                         setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, targets: { ...emp.targets, [ind.id]: val } } : emp));
                                       }}
-                                      className="h-7 text-xs border-blue-200 bg-blue-50"
+                                      className="h-9 text-sm font-bold rounded-lg border-blue-200 bg-blue-50 text-blue-700"
                                     />
                                   </div>
                                 )}
                                 {editingMode?.employeeId === employee.id && editingMode?.mode === 'weights' && (
                                   <div className="flex-1">
-                                    <div className="text-[10px] text-orange-500 mb-1">权重%</div>
+                                    <div className="text-[9px] text-orange-500 font-bold mb-1 uppercase">权重%</div>
                                     <Input
                                       type="number"
                                       value={employee.weights[ind.id] ?? ind.defaultWeight ?? ''}
@@ -467,13 +497,19 @@ export default function Home() {
                                         const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                         setEmployees(prev => prev.map(emp => emp.id === employee.id ? { ...emp, weights: { ...emp.weights, [ind.id]: val } } : emp));
                                       }}
-                                      className="h-7 text-xs border-orange-200 bg-orange-50"
+                                      className="h-9 text-sm font-bold rounded-lg border-orange-200 bg-orange-50 text-orange-700"
                                     />
                                   </div>
                                 )}
                               </div>
-                              <div className="w-full bg-slate-200 h-1 rounded-full overflow-hidden">
-                                <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${completion * 100}%` }}></div>
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[9px] font-bold text-slate-400">
+                                  <span>完成度</span>
+                                  <span>{(completion * 100).toFixed(1)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                  <div className="bg-blue-600 h-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(37,99,235,0.4)]" style={{ width: `${completion * 100}%` }}></div>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -486,19 +522,19 @@ export default function Home() {
             </div>
           </TabsContent>
 
-          {/* 结果统计标签页 - 还原上一版统计视图 */}
-          <TabsContent value="stats" className="mt-6 space-y-6">
+          {/* 结果统计标签页 */}
+          <TabsContent value="stats" className="space-y-6 outline-none">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* 左侧：单项排名 */}
-              <Card className="p-6 lg:col-span-2">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold flex items-center gap-2 text-slate-800">
-                    <BarChart2 className="w-5 h-5 text-blue-600" /> 单项指标排名
+              {/* 左侧：单项指标排名 */}
+              <Card className="p-6 lg:col-span-2 border-slate-200 shadow-sm rounded-xl bg-white">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                    <Trophy className="w-5 h-5 text-yellow-500" /> 单项指标排名
                   </h3>
                   <select 
                     value={selectedIndicatorForRanking ?? ''} 
                     onChange={(e) => setSelectedIndicatorForRanking(e.target.value)}
-                    className="text-sm border-slate-200 rounded-md p-1.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="text-sm font-bold border-slate-200 rounded-lg px-4 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
                   >
                     {indicators.map(ind => <option key={ind.id} value={ind.id}>{ind.name}</option>)}
                   </select>
@@ -516,16 +552,16 @@ export default function Home() {
                     })
                     .sort((a, b) => b.score - a.score || b.completion - a.completion)
                     .map((item, idx) => (
-                      <div key={item.name} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${idx === 0 ? 'bg-yellow-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-300 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <div key={item.name} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-blue-200 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-black shadow-sm ${idx === 0 ? 'bg-yellow-400 text-white' : idx === 1 ? 'bg-slate-300 text-white' : idx === 2 ? 'bg-orange-300 text-white' : 'bg-slate-50 text-slate-400'}`}>
                             {idx + 1}
                           </div>
-                          <span className="font-medium text-slate-700">{item.name}</span>
+                          <span className="font-bold text-slate-700">{item.name}</span>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-blue-700">{item.score.toFixed(2)}</div>
-                          <div className="text-[10px] text-slate-400">完成度: {(item.completion * 100).toFixed(2)}%</div>
+                          <div className="font-black text-xl text-blue-700">{item.score.toFixed(2)}</div>
+                          <div className="text-[10px] font-bold text-slate-400 uppercase">完成度: {(item.completion * 100).toFixed(1)}%</div>
                         </div>
                       </div>
                     ))
@@ -533,32 +569,84 @@ export default function Home() {
                 </div>
               </Card>
 
-              {/* 右侧：总分排名 */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold flex items-center gap-2 mb-6 text-slate-800">
-                  <List className="w-5 h-5 text-blue-600" /> 全员总分排名
+              {/* 右侧：全员总分排名 */}
+              <Card className="p-6 border-slate-200 shadow-sm rounded-xl bg-white">
+                <h3 className="text-lg font-bold flex items-center gap-2 mb-8 text-slate-800">
+                  <BarChart2 className="w-5 h-5 text-blue-600" /> 全员总分排名
                 </h3>
                 <div className="space-y-3">
                   {employees
                     .map(emp => ({ name: emp.name, total: getEmployeeTotalScore(emp) }))
                     .sort((a, b) => b.total - a.total)
                     .map((item, idx) => (
-                      <div key={item.name} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg shadow-sm border-l-4 border-l-blue-600">
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-300 font-mono text-xs">#{String(idx + 1).padStart(2, '0')}</span>
-                          <span className="font-medium text-slate-700">{item.name}</span>
+                      <div key={item.name} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl shadow-sm border-l-4 border-l-blue-600 hover:bg-blue-50/30 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <span className="text-slate-300 font-black text-sm">#{String(idx + 1).padStart(2, '0')}</span>
+                          <span className="font-bold text-slate-700">{item.name}</span>
                         </div>
-                        <span className="font-bold text-xl text-slate-900">{item.total.toFixed(2)}</span>
+                        <span className="font-black text-2xl text-slate-900">{item.total.toFixed(2)}</span>
                       </div>
                     ))
                   }
                 </div>
               </Card>
+
+              {/* 底部：员工业务完成度排名 - 找回缺失的模块 */}
+              <Card className="p-6 lg:col-span-3 border-slate-200 shadow-sm rounded-xl bg-white">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                    <List className="w-5 h-5 text-blue-600" /> 员工业务完成度排名
+                  </h3>
+                  <select 
+                    value={selectedEmployeeForDetail ?? ''} 
+                    onChange={(e) => setSelectedEmployeeForDetail(e.target.value)}
+                    className="text-sm font-bold border-slate-200 rounded-lg px-4 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                  >
+                    <option value="">—— 选择员工查看详情 ——</option>
+                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                  </select>
+                </div>
+                
+                {selectedEmployeeForDetail && (() => {
+                  const emp = employees.find(e => e.id === selectedEmployeeForDetail);
+                  if (!emp) return null;
+                  
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {indicators
+                        .map(ind => {
+                          const actual = emp.values[ind.id] ?? 0;
+                          const target = emp.targets[ind.id] ?? ind.defaultTarget ?? 1;
+                          const weight = emp.weights[ind.id] ?? ind.defaultWeight;
+                          const score = calculateScore(actual, target, weight);
+                          const completion = target ? (actual / target) : 0;
+                          return { name: ind.name, score, completion, unit: ind.unit };
+                        })
+                        .sort((a, b) => b.completion - a.completion)
+                        .map((item, idx) => (
+                          <div key={item.name} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-blue-400">#{idx + 1}</span>
+                                <span className="text-sm font-bold text-slate-700">{item.name}</span>
+                              </div>
+                              <span className="text-xs font-black text-blue-600">{(item.completion * 100).toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-blue-500 h-full" style={{ width: `${Math.min(item.completion * 100, 100)}%` }}></div>
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  );
+                })()}
+              </Card>
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* 隐藏的 PDF 导出区域 - 还原上一版报告样式 */}
+        {/* 隐藏的 PDF 导出区域 */}
         <div className="hidden">
           <div ref={pdfRef} className="p-8 bg-white">
             <h1 className="text-3xl font-bold text-center mb-12 text-slate-900">KPI 绩效考核年度报告</h1>
@@ -618,7 +706,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
