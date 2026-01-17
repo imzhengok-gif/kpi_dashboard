@@ -3,8 +3,14 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List, Save } from 'lucide-react';
+import { Download, Plus, Trash2, Edit2, Settings, Copy, Check, X, Upload, List, Save, FileText, BarChart2, ChevronDown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import * as XLSX from 'xlsx';
 
@@ -736,20 +742,63 @@ export default function Home() {
 
 
   // 导出为 PDF
-  const exportToPDF = () => {
+  const exportToPDF = (mode: 'data' | 'visual' = 'data') => {
     if (!pdfRef.current) return;
 
     const element = pdfRef.current;
-    const printWindow = window.open('', '', 'width=800,height=600');
+    const printWindow = window.open('', '', 'width=1000,height=800');
     if (!printWindow) return;
 
-    printWindow.document.write(element.innerHTML);
-    printWindow.document.close();
+    // 获取当前页面的所有样式
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(style => style.outerHTML)
+      .join('\n');
+
+    const content = element.innerHTML;
     
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>KPI 成绩报告</title>
+          ${mode === 'visual' ? styles : ''}
+          <style>
+            @media print {
+              body { padding: 20px; color: #000; background: #fff; }
+              .no-print { display: none !important; }
+              table { page-break-inside: auto; }
+              tr { page-break-inside: avoid; page-break-after: auto; }
+              h1, h2, h3 { page-break-after: avoid; }
+              ${mode === 'data' ? `
+                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+                th { background-color: #f2f2f2; }
+              ` : ''}
+            }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+            ${mode === 'data' ? `
+              .visual-only { display: none !important; }
+              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+              th { background-color: #f2f2f2; }
+            ` : ''}
+          </style>
+        </head>
+        <body>
+          <div class="${mode === 'data' ? 'pure-data-mode' : 'visual-mode'}">
+            ${content}
+          </div>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   if (!kpiStructure) {
@@ -1339,10 +1388,25 @@ export default function Home() {
           <TabsContent value="results" className="space-y-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-foreground">KPI 成绩统计</h2>
-              <Button onClick={exportToPDF} className="gap-2">
-                <Download className="w-4 h-4" />
-                导出 PDF 报告
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="gap-2">
+                    <Download className="w-4 h-4" />
+                    导出 PDF 报告
+                    <ChevronDown className="w-4 h-4 ml-1 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => exportToPDF('data')} className="gap-2 cursor-pointer">
+                    <FileText className="w-4 h-4" />
+                    <span>导出纯数据版本</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportToPDF('visual')} className="gap-2 cursor-pointer">
+                    <BarChart2 className="w-4 h-4" />
+                    <span>导出带可视化版本</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* 单项指标排名选择 */}
