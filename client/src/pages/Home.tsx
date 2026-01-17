@@ -342,7 +342,7 @@ export default function Home() {
           employeeName: employee.name,
           score: indicatorData.score,
           completionRate: indicatorData.target && indicatorData.target !== 0
-            ? Math.max(0, (indicatorData.actual / indicatorData.target) * 100)
+            ? (indicatorData.actual / indicatorData.target) * 100
             : 0,
         };
       })
@@ -1509,8 +1509,8 @@ export default function Home() {
                   const weight = selectedEmp.weights?.[indicator.key] || 0;
                   const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
                   const score = actual !== null && target !== null && target !== 0
-                    ? Math.min((actual / target) * weight, weight)
-                    : actual !== null ? Math.min(actual, weight) : 0;
+                    ? Math.max(0, Math.min((actual / target) * weight, weight))
+                    : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
 
                   // 计算该指标在所有员工中的排名
                   const allRankings = employees
@@ -1652,11 +1652,16 @@ export default function Home() {
                         const target = emp.targets?.[indicator.key];
                         const weight = emp.weights?.[indicator.key] || 0;
                         const score = actual !== null && target !== null && target !== 0
-                          ? Math.min((actual / target) * weight, weight)
-                          : actual !== null ? Math.min(actual, weight) : 0;
-                        const completion = actual !== null && target !== null && target !== 0
-                          ? ((actual / target) * 100).toFixed(1)
-                          : '—';
+                          ? Math.max(0, Math.min((actual / target) * weight, weight))
+                          : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
+                        const completionNum = actual !== null && target !== null && target !== 0
+                          ? (actual / target) * 100
+                          : null;
+                        const completion = completionNum !== null ? completionNum.toFixed(1) : '—';
+                        
+                        // 计算进度条宽度
+                        const progressWidth = completionNum !== null ? Math.max(0, Math.min(completionNum, 100)) : 0;
+
                         return (
                           <tr key={indicator.key} style={{ borderBottom: '1px solid #ddd' }}>
                             <td style={{ padding: '8px' }}>{indicator.name}</td>
@@ -1664,7 +1669,14 @@ export default function Home() {
                             <td style={{ padding: '8px', textAlign: 'right' }}>{target || '—'}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{weight.toFixed(2)}%</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{score.toFixed(2)}</td>
-                            <td style={{ padding: '8px', textAlign: 'right' }}>{completion}%</td>
+                            <td style={{ padding: '8px', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                                <div className="visual-only" style={{ width: '60px', height: '8px', backgroundColor: '#eee', borderRadius: '4px', overflow: 'hidden', display: 'inline-block' }}>
+                                  <div style={{ width: `${progressWidth}%`, height: '100%', backgroundColor: '#1e40af' }}></div>
+                                </div>
+                                <span>{completion}%</span>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -1700,8 +1712,8 @@ export default function Home() {
                           const target = emp.targets?.[indicator.key];
                           const weight = emp.weights?.[indicator.key] || 0;
                           const score = actual !== null && target !== null && target !== 0
-                            ? Math.min((actual / target) * weight, weight)
-                            : actual !== null ? Math.min(actual, weight) : 0;
+                            ? Math.max(0, Math.min((actual / target) * weight, weight))
+                            : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
                           const completion = actual !== null && target !== null && target !== 0
                             ? ((actual / target) * 100)
                             : 0;
@@ -1732,8 +1744,8 @@ export default function Home() {
                   const weight = emp.weights?.[indicator.key] || 0;
                   const completion = actual !== null && target !== null && target !== 0 ? (actual / target) * 100 : 0;
                   const score = actual !== null && target !== null && target !== 0
-                    ? Math.min((actual / target) * weight, weight)
-                    : actual !== null ? Math.min(actual, weight) : 0;
+                    ? Math.max(0, Math.min((actual / target) * weight, weight))
+                    : actual !== null ? Math.max(0, Math.min(actual, weight)) : 0;
 
                   const allRankings = employees
                     .map((e) => {
